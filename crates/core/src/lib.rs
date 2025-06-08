@@ -1,7 +1,7 @@
 pub mod error;
 pub mod models;
 
-pub use error::{Error, Result};
+pub use error::{Error, ErrorCategory, ErrorContext, Result};
 
 // Re-export commonly used models for convenience
 pub use models::{
