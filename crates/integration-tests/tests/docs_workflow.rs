@@ -19,7 +19,8 @@ type ServerCache = TieredCache<String, Value>;
 /// Create test environment optimized for documentation caching
 async fn create_docs_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     // Documentation cache: 500 entries, 2 hour TTL
     let cache = Arc::new(RwLock::new(
         TieredCache::new(
@@ -196,11 +197,21 @@ async fn test_crate_docs_integration() {
     // Verify cache statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
-    assert!(cache_stats.total_hits >= 2, "Should have multiple cache hits");
-    assert_eq!(cache_stats.memory.size + cache_stats.disk.size, 4, "Should have 2 cached entries (stored in both memory and disk)");
+    assert!(
+        cache_stats.total_hits >= 2,
+        "Should have multiple cache hits"
+    );
+    assert_eq!(
+        cache_stats.memory.size + cache_stats.disk.size,
+        4,
+        "Should have 2 cached entries (stored in both memory and disk)"
+    );
 }
 
 #[tokio::test]
@@ -253,7 +264,10 @@ async fn test_item_docs_integration() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, response.clone()).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, response.clone())
+                .await
+                .expect("Failed to insert into cache");
         }
 
         let result = tool.execute(params, &client, &cache).await;
@@ -264,10 +278,16 @@ async fn test_item_docs_integration() {
     // Verify cache contains all items
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
-    assert!(final_stats.memory.size + final_stats.disk.size >= 5, "Should have cached multiple items");
+    assert!(
+        final_stats.memory.size + final_stats.disk.size >= 5,
+        "Should have cached multiple items"
+    );
 }
 
 #[tokio::test]
@@ -294,7 +314,10 @@ async fn test_version_specific_docs() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response.clone()).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response.clone())
+                .await
+                .expect("Failed to insert into cache");
         }
 
         let result = crate_tool.execute(params, &client, &cache).await;
@@ -322,7 +345,10 @@ async fn test_version_specific_docs() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response.clone()).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response.clone())
+                .await
+                .expect("Failed to insert into cache");
         }
 
         let result = item_tool.execute(params, &client, &cache).await;
@@ -336,7 +362,10 @@ async fn test_version_specific_docs() {
     // Verify each version creates separate cache entries
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert_eq!(
@@ -390,14 +419,21 @@ async fn test_docs_cache_behavior() {
     // Verify cache hit statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert!(
         cache_stats.total_hits >= request_count as u64,
         "Should have multiple cache hits"
     );
-    assert_eq!(cache_stats.memory.size + cache_stats.disk.size, 2, "Should only have one cached entry (stored in both memory and disk)");
+    assert_eq!(
+        cache_stats.memory.size + cache_stats.disk.size,
+        2,
+        "Should only have one cached entry (stored in both memory and disk)"
+    );
 
     // Test cache key uniqueness with different parameters
     let different_version_params = json!({
@@ -425,10 +461,17 @@ async fn test_docs_cache_behavior() {
     // Should now have 2 cache entries
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
-    assert_eq!(final_stats.memory.size + final_stats.disk.size, 4, "Should have 2 different cache entries (stored in both memory and disk)");
+    assert_eq!(
+        final_stats.memory.size + final_stats.disk.size,
+        4,
+        "Should have 2 different cache entries (stored in both memory and disk)"
+    );
 }
 
 #[tokio::test]
@@ -528,7 +571,10 @@ async fn test_complete_documentation_workflow() {
     // Step 4: Verify complete workflow cache utilization
     let workflow_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     println!("Workflow cache stats: {:?}", workflow_stats);
@@ -630,7 +676,10 @@ async fn test_docs_performance_characteristics() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
     }
 
@@ -677,10 +726,16 @@ async fn test_docs_performance_characteristics() {
     // Verify cache efficiency
     let perf_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
-    assert_eq!(perf_stats.memory.size + perf_stats.disk.size, crate_count as usize * 2);
+    assert_eq!(
+        perf_stats.memory.size + perf_stats.disk.size,
+        crate_count as usize * 2
+    );
     assert!(perf_stats.total_hits >= crate_count as u64);
 
     let hit_rate = perf_stats.total_hits as f64 / perf_stats.total_requests as f64;

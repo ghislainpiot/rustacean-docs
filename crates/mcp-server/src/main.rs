@@ -1,7 +1,11 @@
 use anyhow::Result;
 
 use rust_mcp_sdk::{
-    mcp_server::{hyper_server, HyperServerOptions}, schema::{Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools, LATEST_PROTOCOL_VERSION}
+    mcp_server::{hyper_server, HyperServerOptions},
+    schema::{
+        Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools,
+        LATEST_PROTOCOL_VERSION,
+    },
 };
 
 use rustacean_docs_mcp_server::{Config, RustaceanDocsHandler};
@@ -52,7 +56,10 @@ async fn main() -> Result<()> {
         },
     );
     // // eprintln!("Starting Rustacean Docs MCP Server...");
-    server.start().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+    server
+        .start()
+        .await
+        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
 
     Ok(())
 }

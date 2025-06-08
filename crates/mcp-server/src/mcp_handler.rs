@@ -1,14 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use rust_mcp_sdk::{
-    McpServer,
-    schema::{
-        CallToolRequest, CallToolResult, ListToolsRequest, ListToolsResult, 
-        RpcError, Tool,
-        schema_utils::CallToolError
-    }
-};
 use rust_mcp_sdk::mcp_server::ServerHandler;
+use rust_mcp_sdk::{
+    schema::{
+        schema_utils::CallToolError, CallToolRequest, CallToolResult, ListToolsRequest,
+        ListToolsResult, RpcError, Tool,
+    },
+    McpServer,
+};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -19,9 +18,8 @@ use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
 use crate::tools::{
-    SearchTool, CrateDocsTool, ItemDocsTool, CrateMetadataTool, 
-    RecentReleasesTool, CacheStatsTool, ClearCacheTool, CacheMaintenanceTool,
-    ToolHandler
+    CacheMaintenanceTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool,
+    ItemDocsTool, RecentReleasesTool, SearchTool, ToolHandler,
 };
 
 type ServerCache = TieredCache<String, Value>;
@@ -85,49 +83,59 @@ impl RustaceanDocsHandler {
             Tool {
                 name: "search_crate".to_string(),
                 description: Some(SearchTool::new().description().to_string()),
-                input_schema: serde_json::from_value(SearchTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(SearchTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "get_crate_docs".to_string(),
                 description: Some(CrateDocsTool::new().description().to_string()),
-                input_schema: serde_json::from_value(CrateDocsTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(CrateDocsTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "get_item_docs".to_string(),
                 description: Some(ItemDocsTool::new().description().to_string()),
-                input_schema: serde_json::from_value(ItemDocsTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(ItemDocsTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "get_crate_metadata".to_string(),
                 description: Some(CrateMetadataTool::new().description().to_string()),
-                input_schema: serde_json::from_value(CrateMetadataTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(CrateMetadataTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "list_recent_releases".to_string(),
                 description: Some(RecentReleasesTool::new().description().to_string()),
-                input_schema: serde_json::from_value(RecentReleasesTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(RecentReleasesTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "get_cache_stats".to_string(),
                 description: Some(CacheStatsTool::new().description().to_string()),
-                input_schema: serde_json::from_value(CacheStatsTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(CacheStatsTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "clear_cache".to_string(),
                 description: Some(ClearCacheTool::new().description().to_string()),
-                input_schema: serde_json::from_value(ClearCacheTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(ClearCacheTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
             Tool {
                 name: "cache_maintenance".to_string(),
                 description: Some(CacheMaintenanceTool::new().description().to_string()),
-                input_schema: serde_json::from_value(CacheMaintenanceTool::new().parameters_schema()).unwrap(),
+                input_schema: serde_json::from_value(
+                    CacheMaintenanceTool::new().parameters_schema(),
+                )
+                .unwrap(),
                 annotations: None,
             },
         ]
@@ -192,28 +200,44 @@ impl RustaceanDocsHandler {
     async fn execute_tool(&self, tool_name: &str, params: Value) -> Result<Value> {
         let result = match tool_name {
             "search_crate" => {
-                SearchTool::new().execute(params, &self.client, &self.cache).await
+                SearchTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "get_crate_docs" => {
-                CrateDocsTool::new().execute(params, &self.client, &self.cache).await
+                CrateDocsTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "get_item_docs" => {
-                ItemDocsTool::new().execute(params, &self.client, &self.cache).await
+                ItemDocsTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "get_crate_metadata" => {
-                CrateMetadataTool::new().execute(params, &self.client, &self.cache).await
+                CrateMetadataTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "list_recent_releases" => {
-                RecentReleasesTool::new().execute(params, &self.client, &self.cache).await
+                RecentReleasesTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "get_cache_stats" => {
-                CacheStatsTool::new().execute(params, &self.client, &self.cache).await
+                CacheStatsTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "clear_cache" => {
-                ClearCacheTool::new().execute(params, &self.client, &self.cache).await
+                ClearCacheTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             "cache_maintenance" => {
-                CacheMaintenanceTool::new().execute(params, &self.client, &self.cache).await
+                CacheMaintenanceTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
             }
             _ => {
                 return Err(anyhow::anyhow!("Unknown tool: {}", tool_name));
@@ -255,23 +279,32 @@ impl ServerHandler for RustaceanDocsHandler {
             Some(args_map) => serde_json::Value::Object(args_map.clone()),
             None => serde_json::Value::Object(serde_json::Map::new()),
         };
-        
-        debug!("Executing tool: {} with params: {}", request.params.name, params);
-        
+
+        debug!(
+            "Executing tool: {} with params: {}",
+            request.params.name, params
+        );
+
         match self.execute_tool(&request.params.name, params).await {
             Ok(result) => {
                 debug!("Tool execution successful for: {}", request.params.name);
                 Ok(CallToolResult::text_content(
                     serde_json::to_string_pretty(&result).map_err(|e| {
                         error!("Failed to serialize tool result: {}", e);
-                        CallToolError::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Serialization error: {}", e)))
+                        CallToolError::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Serialization error: {}", e),
+                        ))
                     })?,
                     None,
                 ))
             }
             Err(e) => {
                 error!("Tool execution failed for {}: {}", request.params.name, e);
-                Err(CallToolError::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Tool execution error: {}", e))))
+                Err(CallToolError::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Tool execution error: {}", e),
+                )))
             }
         }
     }

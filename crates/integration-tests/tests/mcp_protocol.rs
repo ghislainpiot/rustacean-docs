@@ -230,7 +230,7 @@ async fn test_tool_response_format() {
 
     {
         let cache_guard = cache.write().await;
-        cache_guard
+        let _ = cache_guard
             .insert(cache_key.to_string(), mock_response.clone())
             .await;
     }
@@ -363,7 +363,7 @@ async fn test_tool_concurrency_safety() {
 
     {
         let cache_guard = cache.write().await;
-        cache_guard
+        let _ = cache_guard
             .insert(cache_key.to_string(), mock_response.clone())
             .await;
     }
@@ -516,7 +516,8 @@ async fn test_tool_json_schema_validation() {
 
 async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     let cache = Arc::new(RwLock::new(
         TieredCache::new(
             100,

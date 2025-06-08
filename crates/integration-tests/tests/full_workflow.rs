@@ -17,7 +17,8 @@ type ServerCache = TieredCache<String, Value>;
 /// Create test environment with realistic cache settings
 async fn create_realistic_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     // Use realistic cache settings: 1000 entries, 1 hour TTL
     let cache = Arc::new(RwLock::new(
         TieredCache::new(
@@ -89,7 +90,10 @@ async fn test_complete_search_workflow_with_cache() {
     // Check cache state after first request
     let cache_stats_after_first = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     match first_result {
@@ -145,7 +149,10 @@ async fn test_complete_search_workflow_with_cache() {
     // Verify cache statistics
     let cache_stats_after_hit = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert!(
@@ -170,7 +177,10 @@ async fn test_complete_search_workflow_with_cache() {
     // Final cache statistics
     let final_cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert!(
@@ -202,7 +212,10 @@ async fn test_multiple_queries_workflow() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
     }
 
@@ -239,7 +252,10 @@ async fn test_multiple_queries_workflow() {
     // Verify cache contains all queries
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert_eq!(
@@ -270,7 +286,10 @@ async fn test_workflow_with_parameter_variations() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
     }
 
@@ -340,7 +359,10 @@ async fn test_workflow_error_scenarios() {
         // Verify error doesn't corrupt cache
         let cache_stats = {
             let cache_guard = cache.read().await;
-            cache_guard.stats().await.expect("Failed to get cache stats")
+            cache_guard
+                .stats()
+                .await
+                .expect("Failed to get cache stats")
         };
 
         // Cache should remain functional
@@ -390,7 +412,10 @@ async fn test_workflow_performance_characteristics() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
     }
 
@@ -436,11 +461,15 @@ async fn test_workflow_performance_characteristics() {
     // Verify cache statistics
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     assert_eq!(
-        final_stats.memory.size + final_stats.disk.size, query_count as usize * 2,
+        final_stats.memory.size + final_stats.disk.size,
+        query_count as usize * 2,
         "All entries should be cached (stored in both memory and disk)"
     );
     assert!(
@@ -460,7 +489,10 @@ async fn test_workflow_performance_characteristics() {
 async fn test_workflow_cache_capacity_management() {
     let client = DocsClient::new().expect("Failed to create DocsClient");
     // Create cache with very small capacity for testing eviction
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_small_{}", rand::random::<u64>()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "rustacean_docs_test_small_{}",
+        rand::random::<u64>()
+    ));
     let small_cache = Arc::new(RwLock::new(
         TieredCache::new(
             5, // Only 5 entries
@@ -488,7 +520,10 @@ async fn test_workflow_cache_capacity_management() {
 
         {
             let cache_guard = small_cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
 
         // Execute search to ensure tool can handle it
@@ -503,7 +538,10 @@ async fn test_workflow_cache_capacity_management() {
     // Verify cache maintained capacity limit
     let final_stats = {
         let cache_guard = small_cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     // Memory cache should respect capacity limit (5), but disk cache may have more entries
@@ -579,7 +617,10 @@ async fn test_full_system_integration() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response)
+                .await
+                .expect("Failed to insert into cache");
         }
     }
 
@@ -621,7 +662,10 @@ async fn test_full_system_integration() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response.clone()).await.expect("Failed to insert into cache");
+            cache_guard
+                .insert(cache_key, mock_response.clone())
+                .await
+                .expect("Failed to insert into cache");
         }
 
         let result = tool.execute(search_params, &client, &cache).await;
@@ -636,7 +680,10 @@ async fn test_full_system_integration() {
     // Final verification
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await.expect("Failed to get cache stats")
+        cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats")
     };
 
     println!("Final system stats: {:?}", final_stats);

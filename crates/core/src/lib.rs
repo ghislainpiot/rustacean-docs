@@ -20,4 +20,6 @@ pub use models::{
 };
 
 // Re-export version utilities
-pub use utils::version::{resolve_version, normalize_version, is_latest_version, to_optional_version, DEFAULT_VERSION};
+pub use utils::version::{
+    is_latest_version, normalize_version, resolve_version, to_optional_version, DEFAULT_VERSION,
+};

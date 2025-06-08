@@ -12,7 +12,10 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ClientFactory, ErrorHandler, ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ClientFactory, ErrorHandler, ParameterValidator, ToolHandler,
+    ToolInput,
+};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -42,7 +45,6 @@ impl ToolInput for MetadataToolInput {
 }
 
 impl MetadataToolInput {
-
     /// Convert to internal request format
     pub fn to_request(&self) -> CrateMetadataRequest {
         match &self.version {
@@ -251,8 +253,13 @@ impl ToolHandler for CrateMetadataTool {
         debug!("Executing get_crate_metadata tool with params: {}", params);
 
         // Parse input parameters
-        let input: MetadataToolInput = serde_json::from_value(params.clone())
-            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("get_crate_metadata"), e))?;
+        let input: MetadataToolInput = serde_json::from_value(params.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::parameter_parsing_context("get_crate_metadata"),
+                e
+            )
+        })?;
 
         debug!(
             "Fetching metadata for crate: {} (version: {:?})",
@@ -275,11 +282,12 @@ impl ToolHandler for CrateMetadataTool {
                 // Note: We create a new client since MetadataService takes ownership
                 let new_client = ClientFactory::create_owned_client()?;
                 let metadata_service = MetadataService::new(new_client);
-                
+
                 match metadata_service.get_crate_metadata(&request).await {
                     Ok(metadata) => {
-                        let formatted_response = CrateMetadataTool::format_metadata_response_static(&metadata);
-                        
+                        let formatted_response =
+                            CrateMetadataTool::format_metadata_response_static(&metadata);
+
                         Ok(json!({
                             "status": "success",
                             "crate_name": request.crate_name,
@@ -293,7 +301,8 @@ impl ToolHandler for CrateMetadataTool {
                     }
                 }
             },
-        ).await
+        )
+        .await
     }
 
     fn description(&self) -> &str {
@@ -317,7 +326,6 @@ impl ToolHandler for CrateMetadataTool {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -394,7 +402,7 @@ mod tests {
         use std::collections::HashMap;
 
         let tool = CrateMetadataTool::new();
-        
+
         // Create test metadata
         let mut features = HashMap::new();
         features.insert("default".to_string(), vec!["std".to_string()]);

@@ -17,7 +17,8 @@ type ServerCache = TieredCache<String, Value>;
 /// Create a test environment with shorter TTL for testing
 async fn create_cache_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     let cache = Arc::new(RwLock::new(
         TieredCache::new(
             10,                         // Small capacity for testing eviction
@@ -35,7 +36,8 @@ async fn create_cache_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>
 /// Create a standard test environment
 async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     let cache = Arc::new(RwLock::new(
         TieredCache::new(
             100,
@@ -94,8 +96,15 @@ async fn test_cache_hit_scenario() {
     // Verify initial cache state
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 2, "Cache should have one entry (stored in both memory and disk)");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            2,
+            "Cache should have one entry (stored in both memory and disk)"
+        );
         assert_eq!(stats.total_hits, 0, "No hits yet");
         assert_eq!(stats.total_misses, 0, "No misses yet");
     }
@@ -115,8 +124,15 @@ async fn test_cache_hit_scenario() {
     // Verify cache statistics after hit
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 2, "Cache size should remain 2 (one entry in both layers)");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            2,
+            "Cache size should remain 2 (one entry in both layers)"
+        );
         assert!(stats.total_hits > 0, "Should have recorded a cache hit");
         assert!(stats.total_requests > 0, "Should have recorded a request");
     }
@@ -131,8 +147,15 @@ async fn test_cache_miss_scenario() {
     // Verify cache starts empty
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 0, "Cache should start empty");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            0,
+            "Cache should start empty"
+        );
     }
 
     // Execute search that will miss cache
@@ -146,8 +169,14 @@ async fn test_cache_miss_scenario() {
     // The result may fail due to network issues, but cache should record the miss
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert!(stats.total_requests > 0, "Should have recorded a cache request");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert!(
+            stats.total_requests > 0,
+            "Should have recorded a cache request"
+        );
     }
 
     match result {
@@ -155,7 +184,10 @@ async fn test_cache_miss_scenario() {
             // If network call succeeded, check if result was cached
             {
                 let cache_guard = cache.read().await;
-                let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+                let stats = cache_guard
+                    .stats()
+                    .await
+                    .expect("Failed to get cache stats");
                 // The tool should have attempted to cache the result
                 assert!(stats.total_requests > 0, "Should have cache activity");
             }
@@ -165,8 +197,14 @@ async fn test_cache_miss_scenario() {
             // Just verify cache behavior was attempted
             {
                 let cache_guard = cache.read().await;
-                let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-                assert!(stats.total_requests > 0, "Should have attempted cache lookup");
+                let stats = cache_guard
+                    .stats()
+                    .await
+                    .expect("Failed to get cache stats");
+                assert!(
+                    stats.total_requests > 0,
+                    "Should have attempted cache lookup"
+                );
             }
         }
     }
@@ -201,7 +239,10 @@ async fn test_cache_key_uniqueness() {
     // Verify all entries are cached separately
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         assert_eq!(
             stats.memory.size + stats.disk.size,
             test_cases.len() * 2,
@@ -244,7 +285,10 @@ async fn test_cache_ttl_expiration() {
     // Verify entry is cached
     {
         let cache_guard = cache.read().await;
-        let cached = cache_guard.get(&cache_key.to_string()).await.expect("Failed to get from cache");
+        let cached = cache_guard
+            .get(&cache_key.to_string())
+            .await
+            .expect("Failed to get from cache");
         assert!(cached.is_some(), "Entry should be initially cached");
     }
 
@@ -254,24 +298,42 @@ async fn test_cache_ttl_expiration() {
     // Trigger cleanup and verify entry is expired
     {
         let cache_guard = cache.write().await;
-        let (memory_expired, disk_expired) = cache_guard.cleanup_expired().await.expect("Failed to cleanup expired entries");
-        assert!(memory_expired > 0 || disk_expired > 0, "Should have cleaned up expired entries");
+        let (memory_expired, disk_expired) = cache_guard
+            .cleanup_expired()
+            .await
+            .expect("Failed to cleanup expired entries");
+        assert!(
+            memory_expired > 0 || disk_expired > 0,
+            "Should have cleaned up expired entries"
+        );
     }
 
     // Verify entry is no longer cached (should be expired from both layers)
     {
         let cache_guard = cache.read().await;
-        let cached = cache_guard.get(&cache_key.to_string()).await.expect("Failed to get from cache");
+        let cached = cache_guard
+            .get(&cache_key.to_string())
+            .await
+            .expect("Failed to get from cache");
         // Entry might still exist in disk cache since it has slightly longer TTL (200ms vs 100ms)
         // Just check that cleanup actually happened
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         // The entry should either be gone or we should see it was promoted back from disk
         if cached.is_some() {
             // If still present, it was promoted from disk (which has 200ms TTL)
-            assert!(stats.total_requests > 0, "Should have attempted cache access");
+            assert!(
+                stats.total_requests > 0,
+                "Should have attempted cache access"
+            );
         } else {
             // If gone, both layers expired it
-            assert!(stats.total_requests > 0, "Should have attempted cache access");
+            assert!(
+                stats.total_requests > 0,
+                "Should have attempted cache access"
+            );
         }
     }
 }
@@ -281,7 +343,10 @@ async fn test_cache_lru_eviction() {
     let (_client, _cache) = create_test_environment().await;
 
     // Manually create a cache with very small capacity for testing eviction
-    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_small_{}", rand::random::<u64>()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "rustacean_docs_test_small_{}",
+        rand::random::<u64>()
+    ));
     let small_cache = Arc::new(RwLock::new(
         TieredCache::new(
             2, // Only 2 entries
@@ -315,8 +380,15 @@ async fn test_cache_lru_eviction() {
     // Verify cache is at capacity
     {
         let cache_guard = small_cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 4, "Cache should be at capacity (2 entries × 2 layers)");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            4,
+            "Cache should be at capacity (2 entries × 2 layers)"
+        );
     }
 
     // Add one more entry to trigger eviction
@@ -332,20 +404,39 @@ async fn test_cache_lru_eviction() {
     // Verify memory cache enforced capacity but disk cache may have all entries
     {
         let cache_guard = small_cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         // Memory cache should be at capacity (2), but disk cache might have all 3 entries
         // Memory: 2 entries (capacity limit), Disk: 3 entries (no eviction yet) = 5 total
         assert_eq!(stats.memory.size, 2, "Memory cache should be at capacity");
         assert_eq!(stats.disk.size, 3, "Disk cache should have all entries");
-        assert_eq!(stats.memory.size + stats.disk.size, 5, "Total should be 5 (2 memory + 3 disk)");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            5,
+            "Total should be 5 (2 memory + 3 disk)"
+        );
 
         // Test if entries are still accessible (might be promoted from disk)
-        let first_entry = cache_guard.get(&"search:entry1:10".to_string()).await.expect("Failed to get from cache");
-        let second_entry = cache_guard.get(&"search:entry2:10".to_string()).await.expect("Failed to get from cache");
-        let third_entry = cache_guard.get(&"search:entry3:10".to_string()).await.expect("Failed to get from cache");
-        
+        let first_entry = cache_guard
+            .get(&"search:entry1:10".to_string())
+            .await
+            .expect("Failed to get from cache");
+        let second_entry = cache_guard
+            .get(&"search:entry2:10".to_string())
+            .await
+            .expect("Failed to get from cache");
+        let third_entry = cache_guard
+            .get(&"search:entry3:10".to_string())
+            .await
+            .expect("Failed to get from cache");
+
         // All entries should be accessible (either from memory or promoted from disk)
-        assert!(first_entry.is_some(), "First entry should be accessible from disk");
+        assert!(
+            first_entry.is_some(),
+            "First entry should be accessible from disk"
+        );
         assert!(second_entry.is_some(), "Second entry should be accessible");
         assert!(third_entry.is_some(), "Third entry should be accessible");
     }
@@ -416,7 +507,10 @@ async fn test_cache_concurrent_access() {
     // Verify cache statistics
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         assert!(
             stats.total_hits >= 5,
             "Should have multiple cache hits from concurrent access"
@@ -433,7 +527,10 @@ async fn test_cache_statistics_accuracy() {
     // Initial state verification
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         assert_eq!(stats.memory.size + stats.disk.size, 0);
         assert_eq!(stats.total_hits, 0);
         assert_eq!(stats.total_misses, 0);
@@ -451,7 +548,10 @@ async fn test_cache_statistics_accuracy() {
     // Check stats after first request
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         assert!(stats.total_requests > 0, "Should have recorded request");
     }
 
@@ -473,9 +573,15 @@ async fn test_cache_statistics_accuracy() {
     // Verify statistics were updated correctly
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
         assert!(stats.total_hits > 0, "Should have recorded cache hit");
-        assert!(stats.total_requests >= 2, "Should have recorded both requests");
+        assert!(
+            stats.total_requests >= 2,
+            "Should have recorded both requests"
+        );
 
         // Hit rate should be reasonable
         let hit_rate = stats.total_hits as f64 / stats.total_requests as f64;
@@ -511,26 +617,48 @@ async fn test_cache_clear_functionality() {
     // Verify cache has entries
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 6, "Cache should have 3 entries (stored in both memory and disk)");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            6,
+            "Cache should have 3 entries (stored in both memory and disk)"
+        );
     }
 
     // Clear cache
     {
         let cache_guard = cache.write().await;
-        let (memory_cleared, disk_cleared) = cache_guard.clear().await.expect("Failed to clear cache");
-        assert_eq!(memory_cleared + disk_cleared, 6, "Should have cleared 6 entries total (3 from memory + 3 from disk)");
+        let (memory_cleared, disk_cleared) =
+            cache_guard.clear().await.expect("Failed to clear cache");
+        assert_eq!(
+            memory_cleared + disk_cleared,
+            6,
+            "Should have cleared 6 entries total (3 from memory + 3 from disk)"
+        );
     }
 
     // Verify cache is empty
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 0, "Cache should be empty after clear");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            0,
+            "Cache should be empty after clear"
+        );
 
         // Verify specific entries are gone
         for (key, _) in &entries {
-            let cached = cache_guard.get(&key.to_string()).await.expect("Failed to get from cache");
+            let cached = cache_guard
+                .get(&key.to_string())
+                .await
+                .expect("Failed to get from cache");
             assert!(cached.is_none(), "Entry {} should be cleared", key);
         }
     }
@@ -590,8 +718,15 @@ async fn test_cache_performance_characteristics() {
     // Verify all entries are present
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard.stats().await.expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 100, "All entries should be cached (50 entries × 2 layers)");
+        let stats = cache_guard
+            .stats()
+            .await
+            .expect("Failed to get cache stats");
+        assert_eq!(
+            stats.memory.size + stats.disk.size,
+            100,
+            "All entries should be cached (50 entries × 2 layers)"
+        );
         assert!(stats.total_hits >= 50, "Should have many cache hits");
     }
 }

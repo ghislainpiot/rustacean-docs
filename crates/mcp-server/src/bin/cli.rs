@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
 
 fn list_tools(handler: &RustaceanDocsHandler, format: OutputFormat) -> Result<()> {
     let tools = handler.get_available_tools();
-    
+
     match format {
         OutputFormat::Json => {
             let json = serde_json::json!({
@@ -123,7 +123,9 @@ async fn run_tool(
     };
 
     // Execute the tool
-    let result = handler.execute_tool_directly(tool_name, params_json).await?;
+    let result = handler
+        .execute_tool_directly(tool_name, params_json)
+        .await?;
 
     // Format output
     match format {
@@ -145,7 +147,11 @@ async fn run_tool(
     Ok(())
 }
 
-fn show_schema(handler: &RustaceanDocsHandler, tool_name: &str, format: OutputFormat) -> Result<()> {
+fn show_schema(
+    handler: &RustaceanDocsHandler,
+    tool_name: &str,
+    format: OutputFormat,
+) -> Result<()> {
     let schema = handler.get_tool_schema(tool_name)?;
 
     match format {

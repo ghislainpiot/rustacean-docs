@@ -12,7 +12,10 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ResponseBuilder, ToolErrorContext, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ResponseBuilder,
+    ToolErrorContext, ToolHandler, ToolInput,
+};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -39,7 +42,6 @@ impl ToolInput for SearchToolInput {
 }
 
 impl SearchToolInput {
-
     /// Convert to internal SearchRequest
     pub fn to_search_request(&self) -> SearchRequest {
         match self.limit {
@@ -57,23 +59,26 @@ impl SearchTool {
         Self
     }
 
-
     /// Transform SearchResponse to JSON value for MCP protocol
     fn response_to_json(response: SearchResponse) -> Value {
-        let results: Vec<Value> = response.results.iter().map(|result| {
-            serde_json::json!({
-                "name": result.name,
-                "version": result.version,
-                "description": result.description,
-                "docs_url": result.docs_url,
-                "download_count": result.download_count,
-                "last_updated": result.last_updated,
-                "repository": result.repository,
-                "homepage": result.homepage,
-                "keywords": result.keywords,
-                "categories": result.categories
+        let results: Vec<Value> = response
+            .results
+            .iter()
+            .map(|result| {
+                serde_json::json!({
+                    "name": result.name,
+                    "version": result.version,
+                    "description": result.description,
+                    "docs_url": result.docs_url,
+                    "download_count": result.download_count,
+                    "last_updated": result.last_updated,
+                    "repository": result.repository,
+                    "homepage": result.homepage,
+                    "keywords": result.keywords,
+                    "categories": result.categories
+                })
             })
-        }).collect();
+            .collect();
 
         // Use the response builder for consistent formatting
         ResponseBuilder::paginated(
@@ -96,9 +101,13 @@ impl ToolHandler for SearchTool {
         trace!("Executing search tool with params: {}", params);
 
         // Parse input parameters
-        let input: SearchToolInput =
-            serde_json::from_value(params.clone())
-            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("search_crate"), e))?;
+        let input: SearchToolInput = serde_json::from_value(params.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::parameter_parsing_context("search_crate"),
+                e
+            )
+        })?;
 
         debug!(
             query = %input.query,
@@ -133,7 +142,8 @@ impl ToolHandler for SearchTool {
                 let json_response = Self::response_to_json(search_response);
                 Ok(json_response)
             },
-        ).await
+        )
+        .await
     }
 
     fn description(&self) -> &str {
@@ -365,12 +375,12 @@ mod tests {
         let search_response = SearchResponse::with_total(vec![search_result], 1);
         let json = SearchTool::response_to_json(search_response);
 
-        assert!(json["results"].is_array());
-        assert_eq!(json["results"].as_array().unwrap().len(), 1);
-        assert_eq!(json["total"], 1);
-        assert!(json["query"].is_object());
+        assert!(json["data"]["items"].is_array());
+        assert_eq!(json["data"]["items"].as_array().unwrap().len(), 1);
+        assert_eq!(json["data"]["pagination"]["total"], 1);
+        assert!(json["data"]["pagination"].is_object());
 
-        let result = &json["results"][0];
+        let result = &json["data"]["items"][0];
         assert_eq!(result["name"], "tokio");
         assert_eq!(result["version"], "1.0.0");
         assert_eq!(

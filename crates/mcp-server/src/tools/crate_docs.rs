@@ -12,7 +12,10 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
+    ToolInput,
+};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -42,7 +45,6 @@ impl ToolInput for CrateDocsToolInput {
 }
 
 impl CrateDocsToolInput {
-
     /// Convert to internal CrateDocsRequest
     pub fn to_crate_docs_request(&self) -> CrateDocsRequest {
         match &self.version {
@@ -59,7 +61,6 @@ impl CrateDocsTool {
     pub fn new() -> Self {
         Self
     }
-
 
     /// Transform CrateDocsResponse to JSON value for MCP protocol
     fn response_to_json(response: CrateDocsResponse) -> Value {
@@ -119,9 +120,13 @@ impl ToolHandler for CrateDocsTool {
         trace!("Executing crate docs tool with params: {}", params);
 
         // Parse input parameters
-        let input: CrateDocsToolInput =
-            serde_json::from_value(params.clone())
-            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("get_crate_docs"), e))?;
+        let input: CrateDocsToolInput = serde_json::from_value(params.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::parameter_parsing_context("get_crate_docs"),
+                e
+            )
+        })?;
 
         debug!(
             crate_name = %input.crate_name,
@@ -140,8 +145,11 @@ impl ToolHandler for CrateDocsTool {
             |input, client| async move {
                 // Fetch from docs.rs
                 let docs_request = input.to_crate_docs_request();
-                let docs_response = client.get_crate_docs(docs_request).await
-                    .crate_context("fetch documentation", &input.crate_name, input.version.as_deref())?;
+                let docs_response = client.get_crate_docs(docs_request).await.crate_context(
+                    "fetch documentation",
+                    &input.crate_name,
+                    input.version.as_deref(),
+                )?;
 
                 debug!(
                     crate_name = %docs_response.name,
@@ -155,7 +163,8 @@ impl ToolHandler for CrateDocsTool {
                 let json_response = Self::response_to_json(docs_response);
                 Ok(json_response)
             },
-        ).await
+        )
+        .await
     }
 
     fn description(&self) -> &str {

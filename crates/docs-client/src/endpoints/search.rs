@@ -4,8 +4,7 @@ use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
     error::ErrorContext,
     models::search::{CrateSearchResult, SearchRequest, SearchResponse},
-    DEFAULT_VERSION,
-    Result,
+    Result, DEFAULT_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use std::{hash::Hash, sync::Arc, time::Duration};
@@ -278,8 +277,11 @@ fn transform_crate_data(crate_data: CratesIoCrate) -> Result<CrateSearchResult> 
 
     // Generate docs.rs URL with version
     let docs_url = Some(
-        Url::parse(&format!("https://docs.rs/{}/{}/{}/", crate_data.name, DEFAULT_VERSION, crate_data.name))
-            .context("Failed to construct docs.rs URL")?,
+        Url::parse(&format!(
+            "https://docs.rs/{}/{}/{}/",
+            crate_data.name, DEFAULT_VERSION, crate_data.name
+        ))
+        .context("Failed to construct docs.rs URL")?,
     );
 
     Ok(CrateSearchResult {
@@ -350,7 +352,10 @@ mod tests {
         );
         assert_eq!(result.download_count, Some(50000000));
         assert!(result.docs_url.is_some());
-        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/tokio/latest/tokio/");
+        assert_eq!(
+            result.docs_url.unwrap().as_str(),
+            "https://docs.rs/tokio/latest/tokio/"
+        );
         assert!(result.repository.is_some());
         assert!(result.homepage.is_some());
         assert_eq!(result.keywords, vec!["async", "io"]);
@@ -368,7 +373,10 @@ mod tests {
         assert_eq!(result.description, None);
         assert_eq!(result.download_count, None);
         assert!(result.docs_url.is_some());
-        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/minimal/latest/minimal/");
+        assert_eq!(
+            result.docs_url.unwrap().as_str(),
+            "https://docs.rs/minimal/latest/minimal/"
+        );
         assert_eq!(result.repository, None);
         assert_eq!(result.homepage, None);
         assert!(result.keywords.is_empty());
@@ -407,11 +415,11 @@ mod tests {
         let mut crate1 = create_test_crate("crate1", "1.0.0");
         crate1.description = Some("First crate".to_string());
         crate1.downloads = Some(1000);
-        
+
         let mut crate2 = create_test_crate("crate2", "2.0.0");
         crate2.description = Some("Second crate".to_string());
         crate2.downloads = Some(2000);
-        
+
         let crates = vec![crate1, crate2];
 
         let results = transform_search_results(crates).unwrap();

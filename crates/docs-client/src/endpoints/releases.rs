@@ -25,9 +25,9 @@ struct CratesIoRecentCrate {
     description: Option<String>,
     updated_at: String,
     #[serde(rename = "downloads")]
-    total_downloads: u64,
+    _total_downloads: u64,
     #[serde(rename = "recent_downloads")]
-    recent_downloads: Option<u64>,
+    _recent_downloads: Option<u64>,
 }
 
 /// Metadata from crates.io API response
@@ -143,8 +143,11 @@ impl ReleasesService {
         // Parse the updated_at timestamp
         let published_at = DateTime::parse_from_rfc3339(&crate_data.updated_at)
             .map_err(|e| {
-                error!("Failed to parse timestamp '{}': {}", crate_data.updated_at, e);
-                Error::internal(format!("Invalid timestamp format: {}", e))
+                error!(
+                    "Failed to parse timestamp '{}': {}",
+                    crate_data.updated_at, e
+                );
+                Error::internal(format!("Invalid timestamp format: {e}"))
             })?
             .with_timezone(&Utc);
 
@@ -154,11 +157,8 @@ impl ReleasesService {
             crate_data.name, crate_data.version, crate_data.name
         ))
         .map_err(|e| {
-            error!(
-                "Failed to generate docs URL for {}: {}",
-                crate_data.name, e
-            );
-            Error::internal(format!("Failed to generate docs URL: {}", e))
+            error!("Failed to generate docs URL for {}: {}", crate_data.name, e);
+            Error::internal(format!("Failed to generate docs URL: {e}"))
         })?;
 
         Ok(CrateRelease {
@@ -210,8 +210,8 @@ mod tests {
             version: "1.0.195".to_string(),
             description: Some("A serialization framework".to_string()),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
-            total_downloads: 1000000,
-            recent_downloads: Some(50000),
+            _total_downloads: 1000000,
+            _recent_downloads: Some(50000),
         };
 
         let result = service.transform_crate_to_release(crate_data);
@@ -220,7 +220,10 @@ mod tests {
         let release = result.unwrap();
         assert_eq!(release.name, "serde");
         assert_eq!(release.version, "1.0.195");
-        assert_eq!(release.description, Some("A serialization framework".to_string()));
+        assert_eq!(
+            release.description,
+            Some("A serialization framework".to_string())
+        );
         assert!(release.docs_url.is_some());
         assert_eq!(
             release.docs_url.unwrap().as_str(),
@@ -238,8 +241,8 @@ mod tests {
             version: "1.0.0".to_string(),
             description: None,
             updated_at: "invalid-timestamp".to_string(),
-            total_downloads: 100,
-            recent_downloads: None,
+            _total_downloads: 100,
+            _recent_downloads: None,
         };
 
         let result = service.transform_crate_to_release(crate_data);
@@ -256,8 +259,8 @@ mod tests {
             version: "0.1.0".to_string(),
             description: None,
             updated_at: "2024-01-01T12:00:00Z".to_string(),
-            total_downloads: 1,
-            recent_downloads: None,
+            _total_downloads: 1,
+            _recent_downloads: None,
         };
 
         let result = service.transform_crate_to_release(crate_data);

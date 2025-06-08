@@ -24,7 +24,6 @@ pub use metadata::CrateMetadataTool;
 pub use releases::RecentReleasesTool;
 pub use search::SearchTool;
 
-
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
 
@@ -32,7 +31,7 @@ type ServerCache = TieredCache<String, Value>;
 pub trait ToolInput: Serialize + for<'de> Deserialize<'de> + Send + Sync {
     /// Validate the input parameters
     fn validate(&self) -> Result<(), Error>;
-    
+
     /// Generate cache key for this input
     fn cache_key(&self, tool_name: &str) -> String;
 }
@@ -51,7 +50,10 @@ impl ParameterValidator {
         }
 
         // Basic crate name validation - should contain only valid characters
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(Error::invalid_input(
                 tool_name,
                 "crate_name contains invalid characters",
@@ -77,16 +79,17 @@ impl ParameterValidator {
     /// Validate search query
     pub fn validate_query(query: &str, tool_name: &str) -> Result<(), Error> {
         if query.trim().is_empty() {
-            return Err(Error::invalid_input(
-                tool_name,
-                "query cannot be empty",
-            ));
+            return Err(Error::invalid_input(tool_name, "query cannot be empty"));
         }
         Ok(())
     }
 
     /// Validate limit parameter
-    pub fn validate_limit(limit: &Option<usize>, tool_name: &str, max_limit: usize) -> Result<(), Error> {
+    pub fn validate_limit(
+        limit: &Option<usize>,
+        tool_name: &str,
+        max_limit: usize,
+    ) -> Result<(), Error> {
         if let Some(limit) = limit {
             if *limit == 0 {
                 return Err(Error::invalid_input(
@@ -154,7 +157,8 @@ impl ClientFactory {
     /// This is used for services like MetadataService and ReleasesService
     /// that take ownership of the client rather than borrowing it.
     pub fn create_owned_client() -> Result<DocsClient> {
-        DocsClient::new().map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::client_creation_context(), e))
+        DocsClient::new()
+            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::client_creation_context(), e))
     }
 }
 
@@ -179,7 +183,7 @@ impl ResponseMetadata {
             .unwrap()
             .as_secs()
             .to_string();
-        
+
         Self {
             tool: tool.to_string(),
             timestamp,
@@ -264,9 +268,16 @@ impl ErrorHandler {
     }
 
     /// Add context for crate-specific operations
-    pub fn crate_operation_context(operation: &str, crate_name: &str, version: Option<&str>) -> String {
+    pub fn crate_operation_context(
+        operation: &str,
+        crate_name: &str,
+        version: Option<&str>,
+    ) -> String {
         match version {
-            Some(v) => format!("Failed to {} for crate: {} version: {}", operation, crate_name, v),
+            Some(v) => format!(
+                "Failed to {} for crate: {} version: {}",
+                operation, crate_name, v
+            ),
             None => format!("Failed to {} for crate: {}", operation, crate_name),
         }
     }
@@ -291,10 +302,10 @@ impl ErrorHandler {
 pub trait ToolErrorContext<T> {
     /// Add tool operation context to an error
     fn tool_context(self, tool_name: &str, operation: &str) -> Result<T>;
-    
+
     /// Add crate operation context to an error
     fn crate_context(self, operation: &str, crate_name: &str, version: Option<&str>) -> Result<T>;
-    
+
     /// Add search context to an error
     fn search_context(self, query: &str) -> Result<T>;
 }
@@ -309,14 +320,16 @@ where
 
     fn crate_context(self, operation: &str, crate_name: &str, version: Option<&str>) -> Result<T> {
         self.map_err(|e| {
-            anyhow::anyhow!("{}: {}", ErrorHandler::crate_operation_context(operation, crate_name, version), e)
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::crate_operation_context(operation, crate_name, version),
+                e
+            )
         })
     }
 
     fn search_context(self, query: &str) -> Result<T> {
-        self.map_err(|e| {
-            anyhow::anyhow!("{}: {}", ErrorHandler::search_context(query), e)
-        })
+        self.map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::search_context(query), e))
     }
 }
 

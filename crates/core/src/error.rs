@@ -417,7 +417,7 @@ mod tests {
         ];
 
         for err in recoverable_errors {
-            assert!(err.is_recoverable(), "Error should be recoverable: {}", err);
+            assert!(err.is_recoverable(), "Error should be recoverable: {err}");
         }
 
         // Non-recoverable errors
@@ -431,8 +431,7 @@ mod tests {
         for err in non_recoverable_errors {
             assert!(
                 !err.is_recoverable(),
-                "Error should not be recoverable: {}",
-                err
+                "Error should not be recoverable: {err}"
             );
         }
     }
@@ -447,7 +446,7 @@ mod tests {
         ];
 
         for err in temporary_errors {
-            assert!(err.is_temporary(), "Error should be temporary: {}", err);
+            assert!(err.is_temporary(), "Error should be temporary: {err}");
         }
 
         // Non-temporary errors
@@ -459,11 +458,7 @@ mod tests {
         ];
 
         for err in permanent_errors {
-            assert!(
-                !err.is_temporary(),
-                "Error should not be temporary: {}",
-                err
-            );
+            assert!(!err.is_temporary(), "Error should not be temporary: {err}");
         }
     }
 }

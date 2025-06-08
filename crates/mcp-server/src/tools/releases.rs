@@ -8,7 +8,10 @@ use tracing::{debug, error, instrument};
 use rustacean_docs_client::{DocsClient, ReleasesService};
 use rustacean_docs_core::{models::docs::RecentReleasesRequest, Error};
 
-use super::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ResponseBuilder, ServerCache, ToolHandler, ToolInput};
+use super::{
+    CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ResponseBuilder, ServerCache,
+    ToolHandler, ToolInput,
+};
 
 /// Input parameters for the list_recent_releases tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,15 +96,19 @@ impl ToolHandler for RecentReleasesTool {
                         );
 
                         // Convert to JSON response using response builder
-                        let releases_data: Vec<Value> = response.releases.iter().map(|release| {
-                            json!({
-                                "name": release.name,
-                                "version": release.version,
-                                "description": release.description,
-                                "published_at": release.published_at.to_rfc3339(),
-                                "docs_url": release.docs_url.as_ref().map(|u| u.to_string())
+                        let releases_data: Vec<Value> = response
+                            .releases
+                            .iter()
+                            .map(|release| {
+                                json!({
+                                    "name": release.name,
+                                    "version": release.version,
+                                    "description": release.description,
+                                    "published_at": release.published_at.to_rfc3339(),
+                                    "docs_url": release.docs_url.as_ref().map(|u| u.to_string())
+                                })
                             })
-                        }).collect();
+                            .collect();
 
                         let result = ResponseBuilder::success(json!({
                             "releases": releases_data
@@ -115,7 +122,8 @@ impl ToolHandler for RecentReleasesTool {
                     }
                 }
             },
-        ).await
+        )
+        .await
     }
 
     fn description(&self) -> &str {
@@ -183,11 +191,11 @@ mod tests {
         let tool = RecentReleasesTool::new();
 
         // Test with limit parameter
-        let params_with_limit = json!({ "limit": 10 });
+        let _params_with_limit = json!({ "limit": 10 });
         // We can't actually call execute without a real client, but we can test parameter parsing logic
 
         // Test without limit parameter
-        let params_empty = json!({});
+        let _params_empty = json!({});
         // Similarly, we'd need a mock setup to test the full execution
 
         // For now, just verify the tool can be created and has the right interface
