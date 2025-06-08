@@ -8,12 +8,11 @@ use tracing::{debug, trace};
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{
-    error::ErrorContext,
     models::search::{SearchRequest, SearchResponse},
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ResponseBuilder, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ResponseBuilder, ToolErrorContext, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -98,7 +97,8 @@ impl ToolHandler for SearchTool {
 
         // Parse input parameters
         let input: SearchToolInput =
-            serde_json::from_value(params.clone()).context("Invalid search tool input parameters")?;
+            serde_json::from_value(params.clone())
+            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("search_crate"), e))?;
 
         debug!(
             query = %input.query,
@@ -120,7 +120,7 @@ impl ToolHandler for SearchTool {
                 let search_response = client
                     .search_crates(search_request)
                     .await
-                    .with_context(|| format!("Failed to search for crates with query: {}", input.query))?;
+                    .search_context(&input.query)?;
 
                 debug!(
                     query = %input.query,

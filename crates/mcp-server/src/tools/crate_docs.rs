@@ -8,12 +8,11 @@ use tracing::{debug, trace};
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{
-    error::ErrorContext,
     models::docs::{CrateDocsRequest, CrateDocsResponse},
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -121,7 +120,8 @@ impl ToolHandler for CrateDocsTool {
 
         // Parse input parameters
         let input: CrateDocsToolInput =
-            serde_json::from_value(params.clone()).context("Invalid crate docs tool input parameters")?;
+            serde_json::from_value(params.clone())
+            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("get_crate_docs"), e))?;
 
         debug!(
             crate_name = %input.crate_name,
@@ -140,12 +140,8 @@ impl ToolHandler for CrateDocsTool {
             |input, client| async move {
                 // Fetch from docs.rs
                 let docs_request = input.to_crate_docs_request();
-                let docs_response = client.get_crate_docs(docs_request).await.with_context(|| {
-                    format!(
-                        "Failed to fetch documentation for crate: {} version: {:?}",
-                        input.crate_name, input.version
-                    )
-                })?;
+                let docs_response = client.get_crate_docs(docs_request).await
+                    .crate_context("fetch documentation", &input.crate_name, input.version.as_deref())?;
 
                 debug!(
                     crate_name = %docs_response.name,

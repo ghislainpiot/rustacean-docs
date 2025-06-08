@@ -8,12 +8,11 @@ use tracing::debug;
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{DocsClient, MetadataService};
 use rustacean_docs_core::{
-    error::ErrorContext,
     models::metadata::{CrateMetadata, CrateMetadataRequest},
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ClientFactory, ErrorHandler, ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -253,7 +252,7 @@ impl ToolHandler for CrateMetadataTool {
 
         // Parse input parameters
         let input: MetadataToolInput = serde_json::from_value(params.clone())
-            .with_context(|| "Invalid input parameters for get_crate_metadata".to_string())?;
+            .map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::parameter_parsing_context("get_crate_metadata"), e))?;
 
         debug!(
             "Fetching metadata for crate: {} (version: {:?})",

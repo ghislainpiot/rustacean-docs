@@ -154,7 +154,7 @@ impl ClientFactory {
     /// This is used for services like MetadataService and ReleasesService
     /// that take ownership of the client rather than borrowing it.
     pub fn create_owned_client() -> Result<DocsClient> {
-        DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))
+        DocsClient::new().map_err(|e| anyhow::anyhow!("{}: {}", ErrorHandler::client_creation_context(), e))
     }
 }
 
@@ -245,6 +245,77 @@ impl ResponseBuilder {
                 "message": message,
                 "code": code
             }
+        })
+    }
+}
+
+/// Common error handling utilities for tools
+pub struct ErrorHandler;
+
+impl ErrorHandler {
+    /// Add context for parameter parsing errors
+    pub fn parameter_parsing_context(tool_name: &str) -> String {
+        format!("Invalid input parameters for {}", tool_name)
+    }
+
+    /// Add context for API call failures
+    pub fn api_call_context(operation: &str, target: &str) -> String {
+        format!("Failed to {} for {}", operation, target)
+    }
+
+    /// Add context for crate-specific operations
+    pub fn crate_operation_context(operation: &str, crate_name: &str, version: Option<&str>) -> String {
+        match version {
+            Some(v) => format!("Failed to {} for crate: {} version: {}", operation, crate_name, v),
+            None => format!("Failed to {} for crate: {}", operation, crate_name),
+        }
+    }
+
+    /// Add context for search operations
+    pub fn search_context(query: &str) -> String {
+        format!("Failed to search for crates with query: {}", query)
+    }
+
+    /// Add context for client creation errors
+    pub fn client_creation_context() -> String {
+        "Failed to create HTTP client".to_string()
+    }
+
+    /// Add context for cache operations
+    pub fn cache_operation_context(operation: &str, key: &str) -> String {
+        format!("Cache {} failed for key: {}", operation, key)
+    }
+}
+
+/// Extension trait to add tool-specific error context
+pub trait ToolErrorContext<T> {
+    /// Add tool operation context to an error
+    fn tool_context(self, tool_name: &str, operation: &str) -> Result<T>;
+    
+    /// Add crate operation context to an error
+    fn crate_context(self, operation: &str, crate_name: &str, version: Option<&str>) -> Result<T>;
+    
+    /// Add search context to an error
+    fn search_context(self, query: &str) -> Result<T>;
+}
+
+impl<T, E> ToolErrorContext<T> for std::result::Result<T, E>
+where
+    E: std::fmt::Display + Send + Sync + 'static,
+{
+    fn tool_context(self, tool_name: &str, operation: &str) -> Result<T> {
+        self.map_err(|e| anyhow::anyhow!("{} in {}: {}", operation, tool_name, e))
+    }
+
+    fn crate_context(self, operation: &str, crate_name: &str, version: Option<&str>) -> Result<T> {
+        self.map_err(|e| {
+            anyhow::anyhow!("{}: {}", ErrorHandler::crate_operation_context(operation, crate_name, version), e)
+        })
+    }
+
+    fn search_context(self, query: &str) -> Result<T> {
+        self.map_err(|e| {
+            anyhow::anyhow!("{}: {}", ErrorHandler::search_context(query), e)
         })
     }
 }
