@@ -4,6 +4,6 @@ pub mod server;
 pub mod tools;
 
 pub use config::Config;
-pub use mcp_handler::RustaceanDocsHandler;
+pub use mcp_handler::{RustaceanDocsHandler, ToolInfo};
 pub use server::{McpServer, ServerConfig};
 pub use tools::ToolHandler;

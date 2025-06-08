@@ -26,6 +26,11 @@ use crate::tools::{
 
 type ServerCache = TieredCache<String, Value>;
 
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+}
+
 pub struct RustaceanDocsHandler {
     client: Arc<DocsClient>,
     cache: Arc<RwLock<ServerCache>>,
@@ -126,6 +131,62 @@ impl RustaceanDocsHandler {
                 annotations: None,
             },
         ]
+    }
+
+    pub async fn execute_tool_directly(&self, tool_name: &str, params: Value) -> Result<Value> {
+        self.execute_tool(tool_name, params).await
+    }
+
+    pub fn get_available_tools(&self) -> Vec<ToolInfo> {
+        vec![
+            ToolInfo {
+                name: "search_crate".to_string(),
+                description: SearchTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "get_crate_docs".to_string(),
+                description: CrateDocsTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "get_item_docs".to_string(),
+                description: ItemDocsTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "get_crate_metadata".to_string(),
+                description: CrateMetadataTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "list_recent_releases".to_string(),
+                description: RecentReleasesTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "get_cache_stats".to_string(),
+                description: CacheStatsTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "clear_cache".to_string(),
+                description: ClearCacheTool::new().description().to_string(),
+            },
+            ToolInfo {
+                name: "cache_maintenance".to_string(),
+                description: CacheMaintenanceTool::new().description().to_string(),
+            },
+        ]
+    }
+
+    pub fn get_tool_schema(&self, tool_name: &str) -> Result<Value> {
+        let schema = match tool_name {
+            "search_crate" => SearchTool::new().parameters_schema(),
+            "get_crate_docs" => CrateDocsTool::new().parameters_schema(),
+            "get_item_docs" => ItemDocsTool::new().parameters_schema(),
+            "get_crate_metadata" => CrateMetadataTool::new().parameters_schema(),
+            "list_recent_releases" => RecentReleasesTool::new().parameters_schema(),
+            "get_cache_stats" => CacheStatsTool::new().parameters_schema(),
+            "clear_cache" => ClearCacheTool::new().parameters_schema(),
+            "cache_maintenance" => CacheMaintenanceTool::new().parameters_schema(),
+            _ => return Err(anyhow::anyhow!("Unknown tool: {}", tool_name)),
+        };
+        Ok(schema)
     }
 
     async fn execute_tool(&self, tool_name: &str, params: Value) -> Result<Value> {
