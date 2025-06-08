@@ -8,7 +8,7 @@ use tracing::{debug, error, instrument};
 use rustacean_docs_client::{DocsClient, ReleasesService};
 use rustacean_docs_core::{models::docs::RecentReleasesRequest, Error};
 
-use super::{CacheConfig, CacheStrategy, ParameterValidator, ServerCache, ToolHandler, ToolInput};
+use super::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ServerCache, ToolHandler, ToolInput};
 
 /// Input parameters for the list_recent_releases tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +81,7 @@ impl ToolHandler for RecentReleasesTool {
 
                 // Create releases service and fetch real data
                 // Note: We create a new client since ReleasesService takes ownership
-                let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+                let new_client = ClientFactory::create_owned_client()?;
                 let releases_service = ReleasesService::new(new_client);
 
                 // Make the API call

@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -274,7 +274,7 @@ impl ToolHandler for CrateMetadataTool {
 
                 // Create metadata service and fetch real data
                 // Note: We create a new client since MetadataService takes ownership
-                let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+                let new_client = ClientFactory::create_owned_client()?;
                 let metadata_service = MetadataService::new(new_client);
                 
                 match metadata_service.get_crate_metadata(&request).await {

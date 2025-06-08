@@ -146,6 +146,18 @@ impl CacheConfig {
     }
 }
 
+/// Client factory for creating clients when ownership is needed
+pub struct ClientFactory;
+
+impl ClientFactory {
+    /// Create a new DocsClient instance for services that need ownership
+    /// This is used for services like MetadataService and ReleasesService
+    /// that take ownership of the client rather than borrowing it.
+    pub fn create_owned_client() -> Result<DocsClient> {
+        DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))
+    }
+}
+
 /// Unified cache execution strategy for tools
 pub struct CacheStrategy;
 
