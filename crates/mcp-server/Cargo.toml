@@ -22,4 +22,5 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+async-trait = "0.1"
 # mcp-sdk.workspace = true
