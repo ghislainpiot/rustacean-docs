@@ -22,6 +22,10 @@ struct CratesIoSearchResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CratesIoMeta {
     total: usize,
+    #[serde(rename = "next_page")]
+    next_page: Option<String>,
+    #[serde(rename = "prev_page")]
+    prev_page: Option<String>,
 }
 
 /// Cache key for search requests
@@ -115,24 +119,50 @@ impl SearchService {
 /// Individual crate data from crates.io API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CratesIoCrate {
+    #[serde(rename = "id")]
+    id: String,
     #[serde(rename = "name")]
     name: String,
     #[serde(rename = "newest_version")]
     newest_version: String,
+    #[serde(rename = "max_version")]
+    max_version: String,
+    #[serde(rename = "max_stable_version")]
+    max_stable_version: String,
+    #[serde(rename = "default_version")]
+    default_version: String,
     #[serde(rename = "description")]
     description: Option<String>,
     #[serde(rename = "downloads")]
     downloads: Option<u64>,
+    #[serde(rename = "recent_downloads")]
+    recent_downloads: Option<u64>,
     #[serde(rename = "updated_at")]
     updated_at: Option<DateTime<Utc>>,
+    #[serde(rename = "created_at")]
+    created_at: Option<DateTime<Utc>>,
     #[serde(rename = "repository")]
     repository: Option<String>,
     #[serde(rename = "homepage")]
     homepage: Option<String>,
+    #[serde(rename = "documentation")]
+    documentation: Option<String>,
     #[serde(rename = "keywords")]
     keywords: Option<Vec<String>>,
     #[serde(rename = "categories")]
     categories: Option<Vec<String>>,
+    #[serde(rename = "badges")]
+    badges: Vec<serde_json::Value>,
+    #[serde(rename = "links")]
+    links: serde_json::Value,
+    #[serde(rename = "exact_match")]
+    exact_match: bool,
+    #[serde(rename = "num_versions")]
+    num_versions: usize,
+    #[serde(rename = "yanked")]
+    yanked: bool,
+    #[serde(rename = "versions")]
+    versions: Option<serde_json::Value>,
 }
 
 impl DocsClient {

@@ -5,7 +5,7 @@
   env.GREET = "devenv";
 
   # https://devenv.sh/packages/
-  packages = [ pkgs.git pkgs.openssl pkgs.openssl.dev];
+  packages = [ pkgs.git pkgs.openssl pkgs.openssl.dev pkgs.jq];
 
   # https://devenv.sh/languages/
   # languages.rust.enable = true;

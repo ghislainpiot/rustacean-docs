@@ -67,13 +67,9 @@ impl DocsClient {
             header::HeaderValue::from_static("application/json, text/html, */*"),
         );
 
-        // Set accept encoding for compression
-        if config.gzip {
-            headers.insert(
-                header::ACCEPT_ENCODING,
-                header::HeaderValue::from_static("gzip, deflate"),
-            );
-        }
+        // Note: We don't manually set Accept-Encoding header here.
+        // reqwest automatically handles gzip compression when we don't set it manually,
+        // and will automatically decompress responses for us.
 
         // Build the client with configuration
         let mut client_builder = ClientBuilder::new()
@@ -146,13 +142,9 @@ impl DocsClient {
             header::HeaderValue::from_static("application/json, text/html, */*"),
         );
 
-        // Set accept encoding for compression
-        if config.gzip {
-            headers.insert(
-                header::ACCEPT_ENCODING,
-                header::HeaderValue::from_static("gzip, deflate"),
-            );
-        }
+        // Note: We don't manually set Accept-Encoding header here.
+        // reqwest automatically handles gzip compression when we don't set it manually,
+        // and will automatically decompress responses for us.
 
         // Build the client with configuration (no HTTPS restriction for testing)
         let mut client_builder = ClientBuilder::new()
