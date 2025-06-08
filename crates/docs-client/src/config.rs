@@ -139,7 +139,7 @@ impl Default for UrlConfig {
 }
 
 /// Complete configuration for the docs client
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DocsClientConfig {
     /// HTML parsing configuration
     pub html_parsing: HtmlParsingConfig,
@@ -147,16 +147,6 @@ pub struct DocsClientConfig {
     pub api_patterns: ApiItemPatterns,
     /// URL configuration
     pub urls: UrlConfig,
-}
-
-impl Default for DocsClientConfig {
-    fn default() -> Self {
-        Self {
-            html_parsing: HtmlParsingConfig::default(),
-            api_patterns: ApiItemPatterns::default(),
-            urls: UrlConfig::default(),
-        }
-    }
 }
 
 impl DocsClientConfig {
@@ -176,15 +166,20 @@ impl DocsClientConfig {
     }
 
     /// Load configuration from a file
-    #[cfg(feature = "config-file")]
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    #[allow(dead_code)]
+    pub fn from_file<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
         Ok(Self::from_toml(&content)?)
     }
 
     /// Save configuration to a file
-    #[cfg(feature = "config-file")]
-    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(dead_code)]
+    pub fn to_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let content = self.to_toml()?;
         std::fs::write(path, content)?;
         Ok(())
@@ -198,7 +193,7 @@ mod tests {
     #[test]
     fn test_default_configuration_creation() {
         let config = DocsClientConfig::new();
-        
+
         // Test that defaults are populated
         assert!(!config.html_parsing.version_selectors.is_empty());
         assert!(!config.api_patterns.item_type_markers.is_empty());
@@ -208,16 +203,20 @@ mod tests {
     #[test]
     fn test_html_parsing_config_defaults() {
         let config = HtmlParsingConfig::default();
-        
+
         assert!(config.version_selectors.contains(&".version".to_string()));
-        assert!(config.description_selectors.contains(&".crate-description".to_string()));
-        assert!(config.navigation_selectors.contains(&"nav a[href]".to_string()));
+        assert!(config
+            .description_selectors
+            .contains(&".crate-description".to_string()));
+        assert!(config
+            .navigation_selectors
+            .contains(&"nav a[href]".to_string()));
     }
 
     #[test]
     fn test_api_patterns_defaults() {
         let patterns = ApiItemPatterns::default();
-        
+
         assert!(patterns.item_type_markers.contains(&"trait.".to_string()));
         assert!(patterns.item_type_markers.contains(&"struct.".to_string()));
         assert_eq!(patterns.html_extension, ".html");
@@ -227,7 +226,7 @@ mod tests {
     #[test]
     fn test_url_config_defaults() {
         let urls = UrlConfig::default();
-        
+
         assert_eq!(urls.docs_rs_base, "https://docs.rs");
         assert_eq!(urls.crates_io_base, "https://crates.io");
         assert_eq!(urls.search_endpoint, "/api/v1/crates");
@@ -237,17 +236,19 @@ mod tests {
     fn test_toml_serialization() {
         let config = DocsClientConfig::new();
         let toml_str = config.to_toml().expect("Failed to serialize to TOML");
-        
+
         assert!(toml_str.contains("[html_parsing]"));
         assert!(toml_str.contains("[api_patterns]"));
         assert!(toml_str.contains("[urls]"));
-        
+
         // Test round-trip
-        let parsed_config = DocsClientConfig::from_toml(&toml_str)
-            .expect("Failed to parse TOML");
-        
+        let parsed_config = DocsClientConfig::from_toml(&toml_str).expect("Failed to parse TOML");
+
         assert_eq!(config.urls.docs_rs_base, parsed_config.urls.docs_rs_base);
-        assert_eq!(config.api_patterns.html_extension, parsed_config.api_patterns.html_extension);
+        assert_eq!(
+            config.api_patterns.html_extension,
+            parsed_config.api_patterns.html_extension
+        );
     }
 
     #[test]
@@ -275,14 +276,13 @@ item_type_markers = ["trait.", "struct.", "enum.", "fn.", "macro.", "derive.", "
 html_extension = ".htm"
 index_file = "index.html"
 "#;
-        
-        let config = DocsClientConfig::from_toml(toml_str)
-            .expect("Failed to parse partial TOML");
-        
+
+        let config = DocsClientConfig::from_toml(toml_str).expect("Failed to parse partial TOML");
+
         // Custom values should be applied
         assert_eq!(config.urls.docs_rs_base, "https://custom-docs.rs");
         assert_eq!(config.api_patterns.html_extension, ".htm");
-        
+
         // Default values should still be present where not overridden
         assert_eq!(config.urls.crates_io_base, "https://crates.io");
         assert!(!config.html_parsing.version_selectors.is_empty());

@@ -1,8 +1,8 @@
 use crate::{
-    client::DocsClient, 
-    html_parser::HtmlParser,
+    client::DocsClient,
+    config::{ApiItemPatterns, HtmlParsingConfig},
     error_handling::{build_docs_url, build_item_docs_url},
-    config::{HtmlParsingConfig, ApiItemPatterns}
+    html_parser::HtmlParser,
 };
 use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
@@ -335,11 +335,7 @@ fn parse_crate_documentation(
     let parser = HtmlParser::with_config(html, html_config, api_patterns);
 
     // Extract version from page if not provided
-    let actual_version = resolve_version(
-        version
-            .clone()
-            .or_else(|| parser.extract_version()),
-    );
+    let actual_version = resolve_version(version.clone().or_else(|| parser.extract_version()));
 
     // Extract crate description
     let description = parser.extract_description();
@@ -442,8 +438,6 @@ fn parse_recent_releases(html: &str, limit: usize) -> Result<Vec<CrateRelease>> 
     Ok(releases)
 }
 
-/// Extract version from the documentation page
-
 /// Parse navigation items to extract crate structure
 fn parse_navigation_items(parser: &HtmlParser) -> Result<Vec<CrateItem>> {
     let api_links = parser.extract_api_links();
@@ -478,7 +472,6 @@ fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
         docs_path: Some(path),
     }
 }
-
 
 /// Infer item kind from path or name
 fn infer_item_kind(path: &str, _name: &str) -> ItemKind {
@@ -581,7 +574,8 @@ fn categorize_items(items: &[CrateItem]) -> CrateCategories {
 /// Extract item name from documentation page
 fn extract_item_name(document: &Html, fallback: &str) -> String {
     let html_config = HtmlParsingConfig::default();
-    let name_selectors: Vec<&str> = html_config.item_name_selectors
+    let name_selectors: Vec<&str> = html_config
+        .item_name_selectors
         .iter()
         .map(|s| s.as_str())
         .collect();
@@ -612,7 +606,8 @@ fn extract_item_name(document: &Html, fallback: &str) -> String {
 /// Extract item kind from documentation page
 fn extract_item_kind(document: &Html) -> ItemKind {
     let html_config = HtmlParsingConfig::default();
-    let kind_selectors: Vec<&str> = html_config.item_kind_selectors
+    let kind_selectors: Vec<&str> = html_config
+        .item_kind_selectors
         .iter()
         .map(|s| s.as_str())
         .collect();
@@ -641,7 +636,8 @@ fn extract_item_kind(document: &Html) -> ItemKind {
 /// Extract item signature from documentation page
 fn extract_item_signature(document: &Html) -> Option<String> {
     let html_config = HtmlParsingConfig::default();
-    let signature_selectors: Vec<&str> = html_config.signature_selectors
+    let signature_selectors: Vec<&str> = html_config
+        .signature_selectors
         .iter()
         .map(|s| s.as_str())
         .collect();
@@ -687,7 +683,8 @@ fn extract_related_items(document: &Html) -> Vec<String> {
     let mut related = Vec::new();
 
     let html_config = HtmlParsingConfig::default();
-    let related_selectors: Vec<&str> = html_config.related_items_selectors
+    let related_selectors: Vec<&str> = html_config
+        .related_items_selectors
         .iter()
         .map(|s| s.as_str())
         .collect();
@@ -1165,8 +1162,8 @@ mod tests {
 
     // Tests with pre-downloaded HTML files
     fn load_test_html(filename: &str) -> String {
-        std::fs::read_to_string(format!("test_fixtures/{}", filename))
-            .unwrap_or_else(|_| panic!("Could not load test fixture: {}", filename))
+        std::fs::read_to_string(format!("test_fixtures/{filename}"))
+            .unwrap_or_else(|_| panic!("Could not load test fixture: {filename}"))
     }
 
     #[test]
@@ -1512,7 +1509,7 @@ mod tests {
         let (name, href) = &api_links[0];
         assert_eq!(name, "Valid");
         assert_eq!(href, "trait.Valid.html");
-        
+
         // Test that the link is correctly identified as an API item
         assert!(HtmlParser::is_api_item_href_static(href));
     }

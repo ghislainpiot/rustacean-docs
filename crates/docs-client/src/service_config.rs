@@ -1,5 +1,5 @@
-use std::time::Duration;
 use crate::{DocsClient, DocsService, MetadataService, ReleasesService, SearchService};
+use std::time::Duration;
 
 /// Configuration for all endpoint services
 #[derive(Debug, Clone)]
@@ -91,7 +91,8 @@ impl ServiceConfig {
 
     /// Get effective cache capacity for search service
     pub fn search_cache_capacity(&self) -> usize {
-        self.search_cache_capacity.unwrap_or(self.default_cache_capacity)
+        self.search_cache_capacity
+            .unwrap_or(self.default_cache_capacity)
     }
 
     /// Get effective cache TTL for search service
@@ -101,7 +102,8 @@ impl ServiceConfig {
 
     /// Get effective cache capacity for metadata service
     pub fn metadata_cache_capacity(&self) -> usize {
-        self.metadata_cache_capacity.unwrap_or(self.default_cache_capacity)
+        self.metadata_cache_capacity
+            .unwrap_or(self.default_cache_capacity)
     }
 
     /// Get effective cache TTL for metadata service
@@ -111,7 +113,8 @@ impl ServiceConfig {
 
     /// Get effective cache capacity for docs service
     pub fn docs_cache_capacity(&self) -> usize {
-        self.docs_cache_capacity.unwrap_or(self.default_cache_capacity)
+        self.docs_cache_capacity
+            .unwrap_or(self.default_cache_capacity)
     }
 
     /// Get effective cache TTL for docs service
@@ -121,7 +124,8 @@ impl ServiceConfig {
 
     /// Get effective cache capacity for releases service
     pub fn releases_cache_capacity(&self) -> usize {
-        self.releases_cache_capacity.unwrap_or(self.default_cache_capacity)
+        self.releases_cache_capacity
+            .unwrap_or(self.default_cache_capacity)
     }
 
     /// Get effective cache TTL for releases service
@@ -147,10 +151,7 @@ impl ServiceBuilder {
 
     /// Create a new service builder with custom configuration
     pub fn with_config(client: DocsClient, config: ServiceConfig) -> Self {
-        Self {
-            client,
-            config,
-        }
+        Self { client, config }
     }
 
     /// Update the service configuration
@@ -254,14 +255,14 @@ mod tests {
     #[test]
     fn test_service_config_defaults() {
         let config = ServiceConfig::new();
-        
+
         assert_eq!(config.default_cache_capacity, 1000);
         assert_eq!(config.default_cache_ttl, Duration::from_secs(3600));
-        
+
         // Test that search uses defaults when no override
         assert_eq!(config.search_cache_capacity(), 1000);
         assert_eq!(config.search_cache_ttl(), Duration::from_secs(3600));
-        
+
         // Test that releases uses overrides by default
         assert_eq!(config.releases_cache_capacity(), 100);
         assert_eq!(config.releases_cache_ttl(), Duration::from_secs(1800));
@@ -274,16 +275,16 @@ mod tests {
             .with_default_cache_ttl(Duration::from_secs(1800))
             .with_search_cache(200, Duration::from_secs(600))
             .with_metadata_cache(800, Duration::from_secs(7200));
-        
+
         assert_eq!(config.default_cache_capacity, 500);
         assert_eq!(config.default_cache_ttl, Duration::from_secs(1800));
-        
+
         assert_eq!(config.search_cache_capacity(), 200);
         assert_eq!(config.search_cache_ttl(), Duration::from_secs(600));
-        
+
         assert_eq!(config.metadata_cache_capacity(), 800);
         assert_eq!(config.metadata_cache_ttl(), Duration::from_secs(7200));
-        
+
         // Docs should use defaults since no override
         assert_eq!(config.docs_cache_capacity(), 500);
         assert_eq!(config.docs_cache_ttl(), Duration::from_secs(1800));
@@ -293,7 +294,7 @@ mod tests {
     fn test_service_builder_creation() {
         let client = DocsClient::new().unwrap();
         let builder = ServiceBuilder::new(client);
-        
+
         // Should not panic when building services
         let _search = builder.build_search_service();
         let _metadata = builder.build_metadata_service();
@@ -305,7 +306,7 @@ mod tests {
     fn test_services_registry() {
         let client = DocsClient::new().unwrap();
         let registry = ServicesRegistry::new(client);
-        
+
         // Should have all services available - just ensure they're not panicking when accessed
         let _search = registry.search();
         let _metadata = registry.metadata();
@@ -319,9 +320,9 @@ mod tests {
         let config = ServiceConfig::new()
             .with_default_cache_capacity(250)
             .with_search_cache(50, Duration::from_secs(300));
-        
+
         let registry = ServicesRegistry::with_config(client, config);
-        
+
         // Should have all services configured properly - just ensure they're accessible
         let _search = registry.search();
         let _metadata = registry.metadata();

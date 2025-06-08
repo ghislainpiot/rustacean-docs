@@ -1,6 +1,6 @@
 use crate::{
     client::DocsClient,
-    error_handling::{handle_http_response, parse_json_response, build_docs_url}
+    error_handling::{build_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::{DateTime, Utc};
 use rustacean_docs_cache::memory::MemoryCache;
@@ -196,7 +196,8 @@ impl DocsClient {
             .context("Failed to send search request to crates.io")?;
 
         let response = handle_http_response(response, "crates.io search").await?;
-        let crates_io_response: CratesIoSearchResponse = parse_json_response(response, "crates.io search results").await?;
+        let crates_io_response: CratesIoSearchResponse =
+            parse_json_response(response, "crates.io search results").await?;
 
         debug!(
             query = %request.query,

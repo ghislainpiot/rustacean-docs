@@ -4,13 +4,10 @@ use tracing::warn;
 use url::Url;
 
 /// Standard HTTP response handling for all endpoints
-pub(crate) async fn handle_http_response(
-    response: Response,
-    context: &str,
-) -> Result<Response> {
+pub(crate) async fn handle_http_response(response: Response, context: &str) -> Result<Response> {
     let status = response.status();
     let url = response.url().clone();
-    
+
     if status.is_success() {
         Ok(response)
     } else {
@@ -21,12 +18,12 @@ pub(crate) async fn handle_http_response(
             context = %context,
             "HTTP request failed"
         );
-        
+
         let error = match status.as_u16() {
             404 => Error::crate_not_found("Resource not found"),
             429 => Error::RateLimit,
             _ => Error::http_request(
-                format!("{}: HTTP {status}: {body}", context),
+                format!("{context}: HTTP {status}: {body}"),
                 Some(status.as_u16()),
             ),
         };
@@ -35,29 +32,30 @@ pub(crate) async fn handle_http_response(
 }
 
 /// Standard JSON parsing with context
-pub(crate) async fn parse_json_response<T>(
-    response: Response,
-    context: &str,
-) -> Result<T>
+pub(crate) async fn parse_json_response<T>(response: Response, context: &str) -> Result<T>
 where
     T: serde::de::DeserializeOwned,
 {
     response
         .json::<T>()
         .await
-        .with_context(|| format!("Failed to parse JSON response: {}", context))
+        .with_context(|| format!("Failed to parse JSON response: {context}"))
 }
 
 /// Build docs.rs URL with standard error handling
 pub(crate) fn build_docs_url(crate_name: &str, version: &str) -> Result<Url> {
-    Url::parse(&format!("https://docs.rs/{crate_name}/{version}/{crate_name}/"))
-        .context("Failed to construct docs.rs URL")
+    Url::parse(&format!(
+        "https://docs.rs/{crate_name}/{version}/{crate_name}/"
+    ))
+    .context("Failed to construct docs.rs URL")
 }
 
 /// Build docs.rs URL for specific item with standard error handling
 pub(crate) fn build_item_docs_url(crate_name: &str, version: &str, item_path: &str) -> Result<Url> {
-    Url::parse(&format!("https://docs.rs/{crate_name}/{version}/{crate_name}/{item_path}"))
-        .context("Failed to construct item docs URL")
+    Url::parse(&format!(
+        "https://docs.rs/{crate_name}/{version}/{crate_name}/{item_path}"
+    ))
+    .context("Failed to construct item docs URL")
 }
 
 /// Build basic docs.rs URL (no version, for documentation links)
@@ -93,7 +91,7 @@ mod tests {
 
         let client = Client::new();
         let response = client
-            .get(&format!("{}/test", server.url()))
+            .get(format!("{}/test", server.url()))
             .send()
             .await
             .unwrap();
@@ -116,17 +114,17 @@ mod tests {
 
         let client = Client::new();
         let response = client
-            .get(&format!("{}/test", server.url()))
+            .get(format!("{}/test", server.url()))
             .send()
             .await
             .unwrap();
 
         let result = handle_http_response(response, "test operation").await;
         assert!(result.is_err());
-        
+
         match result.unwrap_err() {
-            Error::CrateNotFound { .. } => {}, // Expected
-            other => panic!("Expected CrateNotFound error, got: {:?}", other),
+            Error::CrateNotFound { .. } => {} // Expected
+            other => panic!("Expected CrateNotFound error, got: {other:?}"),
         }
 
         mock.assert_async().await;
@@ -144,17 +142,17 @@ mod tests {
 
         let client = Client::new();
         let response = client
-            .get(&format!("{}/test", server.url()))
+            .get(format!("{}/test", server.url()))
             .send()
             .await
             .unwrap();
 
         let result = handle_http_response(response, "test operation").await;
         assert!(result.is_err());
-        
+
         match result.unwrap_err() {
-            Error::RateLimit => {}, // Expected
-            other => panic!("Expected RateLimit error, got: {:?}", other),
+            Error::RateLimit => {} // Expected
+            other => panic!("Expected RateLimit error, got: {other:?}"),
         }
 
         mock.assert_async().await;
@@ -169,7 +167,9 @@ mod tests {
     #[test]
     fn test_build_item_docs_url() {
         let url = build_item_docs_url("serde", "1.0.0", "trait.Serialize.html").unwrap();
-        assert_eq!(url.as_str(), "https://docs.rs/serde/1.0.0/serde/trait.Serialize.html");
+        assert_eq!(
+            url.as_str(),
+            "https://docs.rs/serde/1.0.0/serde/trait.Serialize.html"
+        );
     }
-
 }

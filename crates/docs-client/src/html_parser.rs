@@ -1,6 +1,6 @@
-use crate::config::{HtmlParsingConfig, ApiItemPatterns};
+use crate::config::{ApiItemPatterns, HtmlParsingConfig};
 use rustacean_docs_core::models::docs::CodeExample;
-use scraper::{Html, Selector, ElementRef};
+use scraper::{ElementRef, Html, Selector};
 use tracing::trace;
 
 /// Centralized HTML parser utility for docs.rs content
@@ -13,11 +13,19 @@ pub struct HtmlParser {
 impl HtmlParser {
     /// Create a new HTML parser from HTML content with default configuration
     pub fn new(html: &str) -> Self {
-        Self::with_config(html, HtmlParsingConfig::default(), ApiItemPatterns::default())
+        Self::with_config(
+            html,
+            HtmlParsingConfig::default(),
+            ApiItemPatterns::default(),
+        )
     }
 
     /// Create a new HTML parser with custom configuration
-    pub fn with_config(html: &str, html_config: HtmlParsingConfig, api_patterns: ApiItemPatterns) -> Self {
+    pub fn with_config(
+        html: &str,
+        html_config: HtmlParsingConfig,
+        api_patterns: ApiItemPatterns,
+    ) -> Self {
         Self {
             document: Html::parse_document(html),
             html_config,
@@ -33,13 +41,13 @@ impl HtmlParser {
     /// Extract elements matching any of the given selectors
     pub fn extract_by_selectors(&self, selectors: &[&str]) -> Vec<ElementRef<'_>> {
         let mut elements = Vec::new();
-        
+
         for selector_str in selectors {
             if let Ok(selector) = Selector::parse(selector_str) {
                 elements.extend(self.document.select(&selector));
             }
         }
-        
+
         elements
     }
 
@@ -83,7 +91,9 @@ impl HtmlParser {
 
     /// Extract version from page using configured patterns
     pub fn extract_version(&self) -> Option<String> {
-        let version_selectors: Vec<&str> = self.html_config.version_selectors
+        let version_selectors: Vec<&str> = self
+            .html_config
+            .version_selectors
             .iter()
             .map(|s| s.as_str())
             .collect();
@@ -103,7 +113,7 @@ impl HtmlParser {
                     } else {
                         &element.text().collect::<String>()
                     };
-                    
+
                     // Look for version patterns in content
                     if let Some(version) = self.extract_version_from_text(content) {
                         return Some(version);
@@ -125,7 +135,7 @@ impl HtmlParser {
                     } else {
                         element.text().collect::<String>().trim().to_string()
                     };
-                    
+
                     if !text.is_empty() {
                         return Some(text);
                     }
@@ -139,8 +149,10 @@ impl HtmlParser {
     /// Extract navigation links that match API item patterns
     pub fn extract_api_links(&self) -> Vec<(String, String)> {
         let mut links = Vec::new();
-        
-        let nav_selectors: Vec<&str> = self.html_config.navigation_selectors
+
+        let nav_selectors: Vec<&str> = self
+            .html_config
+            .navigation_selectors
             .iter()
             .map(|s| s.as_str())
             .collect();
@@ -148,7 +160,7 @@ impl HtmlParser {
         for element in self.extract_by_selectors(&nav_selectors) {
             if let Some(href) = Self::extract_href_from_element(&element) {
                 trace!(href = %href, "Found link in navigation");
-                
+
                 if self.is_api_item_href(&href) {
                     if let Some(text) = Self::extract_text_from_element(&element) {
                         trace!(href = %href, text = %text, "Link matches API item pattern");
@@ -176,9 +188,10 @@ impl HtmlParser {
         }
 
         // Check for index files (modules)
-        if href.ends_with(&format!("/{}", self.api_patterns.index_file)) 
-            && !href.starts_with("../") 
-            && href != self.api_patterns.index_file {
+        if href.ends_with(&format!("/{}", self.api_patterns.index_file))
+            && !href.starts_with("../")
+            && href != self.api_patterns.index_file
+        {
             return true;
         }
 
@@ -188,7 +201,7 @@ impl HtmlParser {
     /// Static version for backward compatibility and external use
     pub fn is_api_item_href_static(href: &str) -> bool {
         let patterns = ApiItemPatterns::default();
-        
+
         // Skip external links, anchors, and non-API paths
         if href.starts_with("http") || href.starts_with("//") || href.starts_with('#') {
             return false;
@@ -202,8 +215,8 @@ impl HtmlParser {
         }
 
         // Check for index files (modules)
-        href.ends_with(&format!("/{}", patterns.index_file)) 
-            && !href.starts_with("../") 
+        href.ends_with(&format!("/{}", patterns.index_file))
+            && !href.starts_with("../")
             && href != patterns.index_file
     }
 
@@ -211,7 +224,9 @@ impl HtmlParser {
     pub fn extract_code_examples(&self) -> Vec<CodeExample> {
         let mut examples = Vec::new();
 
-        let code_selectors: Vec<&str> = self.html_config.code_example_selectors
+        let code_selectors: Vec<&str> = self
+            .html_config
+            .code_example_selectors
             .iter()
             .map(|s| s.as_str())
             .collect();
@@ -242,17 +257,17 @@ impl HtmlParser {
     /// Extract version from text using regex patterns
     fn extract_version_from_text(&self, text: &str) -> Option<String> {
         use regex::Regex;
-        
+
         // Pattern for semantic versions (1.2.3, 0.1.0-alpha, etc.)
         let version_regex = Regex::new(r"\b(\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]*)?)\b").ok()?;
-        
+
         if let Some(captures) = version_regex.captures(text) {
             return captures.get(1).map(|m| m.as_str().to_string());
         }
 
         // Pattern for shorter versions (1.2, 0.1, etc.)
         let short_version_regex = Regex::new(r"\b(\d+\.\d+)\b").ok()?;
-        
+
         if let Some(captures) = short_version_regex.captures(text) {
             return captures.get(1).map(|m| m.as_str().to_string());
         }
@@ -282,15 +297,15 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         let parser = HtmlParser::new(html);
-        
+
         let text = parser.extract_text_by_selectors(&["h1"]);
         assert_eq!(text, Some("Main Title".to_string()));
-        
+
         let text = parser.extract_text_by_selectors(&[".content"]);
         assert_eq!(text, Some("Content Text".to_string()));
-        
+
         let text = parser.extract_text_by_selectors(&[".nonexistent"]);
         assert_eq!(text, None);
     }
@@ -303,7 +318,7 @@ mod tests {
         assert!(HtmlParser::is_api_item_href_static("fn.function.html"));
         assert!(HtmlParser::is_api_item_href_static("macro.my_macro.html"));
         assert!(HtmlParser::is_api_item_href_static("module/index.html"));
-        
+
         assert!(!HtmlParser::is_api_item_href_static("https://external.com"));
         assert!(!HtmlParser::is_api_item_href_static("//example.com"));
         assert!(!HtmlParser::is_api_item_href_static("#anchor"));
@@ -323,7 +338,7 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         let parser = HtmlParser::new(html);
         let version = parser.extract_version();
         assert_eq!(version, Some("1.0.136".to_string()));
@@ -338,10 +353,13 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         let parser = HtmlParser::new(html);
         let description = parser.extract_description();
-        assert_eq!(description, Some("A fast serialization framework".to_string()));
+        assert_eq!(
+            description,
+            Some("A fast serialization framework".to_string())
+        );
     }
 
     #[test]
@@ -357,12 +375,15 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         let parser = HtmlParser::new(html);
         let links = parser.extract_api_links();
-        
+
         assert_eq!(links.len(), 2);
         assert!(links.contains(&("Serialize".to_string(), "struct.Serialize.html".to_string())));
-        assert!(links.contains(&("Deserialize".to_string(), "trait.Deserialize.html".to_string())));
+        assert!(links.contains(&(
+            "Deserialize".to_string(),
+            "trait.Deserialize.html".to_string()
+        )));
     }
 }

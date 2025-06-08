@@ -455,7 +455,7 @@ mod tests {
                 rustacean_docs_core::Error::HttpRequest { status, .. } => {
                     assert_eq!(status, Some(404));
                 }
-                _ => panic!("Expected HttpRequest error, got: {:?}", error),
+                _ => panic!("Expected HttpRequest error, got: {error:?}"),
             }
 
             mock.assert_async().await;
@@ -482,7 +482,7 @@ mod tests {
                 rustacean_docs_core::Error::HttpRequest { status, .. } => {
                     assert_eq!(status, Some(500));
                 }
-                _ => panic!("Expected HttpRequest error, got: {:?}", error),
+                _ => panic!("Expected HttpRequest error, got: {error:?}"),
             }
 
             mock.assert_async().await;

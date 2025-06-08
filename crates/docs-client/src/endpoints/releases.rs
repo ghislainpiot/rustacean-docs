@@ -1,6 +1,6 @@
 use crate::{
     client::DocsClient,
-    error_handling::{handle_http_response, parse_json_response, build_docs_url}
+    error_handling::{build_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::{DateTime, Utc};
 use rustacean_docs_cache::memory::MemoryCache;
@@ -67,7 +67,11 @@ impl ReleasesService {
     }
 
     /// Create a new releases service with custom cache configuration
-    pub fn with_cache_config(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
+    pub fn with_cache_config(
+        client: DocsClient,
+        cache_capacity: usize,
+        cache_ttl: Duration,
+    ) -> Self {
         let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
 
         debug!(
@@ -88,10 +92,7 @@ impl ReleasesService {
 
         // Try to get from cache first
         if let Some(cached_response) = self.cache.get(&cache_key).await {
-            trace!(
-                limit = request.limit(),
-                "Recent releases cache hit"
-            );
+            trace!(limit = request.limit(), "Recent releases cache hit");
             return Ok(cached_response);
         }
 
@@ -139,7 +140,8 @@ impl ReleasesService {
             })?;
 
         let response = handle_http_response(response, "crates.io recent releases").await?;
-        let crates_io_response: CratesIoRecentResponse = parse_json_response(response, "crates.io recent releases").await?;
+        let crates_io_response: CratesIoRecentResponse =
+            parse_json_response(response, "crates.io recent releases").await?;
 
         debug!(
             total_crates = crates_io_response.meta.total,
@@ -226,7 +228,7 @@ mod tests {
         let _service = ReleasesService::new(client);
 
         // Basic verification that service can be created
-        assert!(true);
+        // Test passes by completing without panic
     }
 
     #[test]

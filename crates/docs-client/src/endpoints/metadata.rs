@@ -1,6 +1,6 @@
 use crate::{
     client::DocsClient,
-    error_handling::{handle_http_response, parse_json_response, build_basic_docs_url}
+    error_handling::{build_basic_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::Utc;
 use rustacean_docs_cache::memory::MemoryCache;
@@ -140,7 +140,11 @@ impl MetadataService {
     }
 
     /// Create a new metadata service with custom cache configuration
-    pub fn with_cache_config(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
+    pub fn with_cache_config(
+        client: DocsClient,
+        cache_capacity: usize,
+        cache_ttl: Duration,
+    ) -> Self {
         let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
 
         debug!(
@@ -208,8 +212,13 @@ impl MetadataService {
                 Error::Network(e)
             })?;
 
-        let response = handle_http_response(response, &format!("crates.io metadata for {}", request.crate_name)).await?;
-        let crates_io_response: CratesIoResponse = parse_json_response(response, "crates.io metadata").await?;
+        let response = handle_http_response(
+            response,
+            &format!("crates.io metadata for {}", request.crate_name),
+        )
+        .await?;
+        let crates_io_response: CratesIoResponse =
+            parse_json_response(response, "crates.io metadata").await?;
 
         self.transform_metadata(crates_io_response, request).await
     }
@@ -481,6 +490,6 @@ mod tests {
         let _service = MetadataService::new(client);
 
         // Basic verification that service can be created
-        assert!(true);
+        // Test passes by completing without panic
     }
 }
