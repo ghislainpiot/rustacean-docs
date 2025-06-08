@@ -51,6 +51,26 @@ impl DocsClient {
 
     /// Create a new client with custom configuration
     pub fn with_config(config: ClientConfig) -> Result<Self> {
+        let client = Self::build_client(&config, false)?;
+
+        debug!(
+            user_agent = %config.user_agent,
+            timeout_secs = config.timeout.as_secs(),
+            connect_timeout_secs = config.connect_timeout.as_secs(),
+            max_redirects = config.max_redirects,
+            gzip = config.gzip,
+            "Created HTTP client with configuration"
+        );
+
+        Ok(Self {
+            client,
+            config,
+            base_url: "https://docs.rs".to_string(),
+        })
+    }
+
+    /// Build an HTTP client with the given configuration
+    fn build_client(config: &ClientConfig, allow_http: bool) -> Result<Client> {
         let mut headers = header::HeaderMap::new();
 
         // Set user agent
@@ -78,32 +98,21 @@ impl DocsClient {
             .connect_timeout(config.connect_timeout)
             .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
             .pool_idle_timeout(config.pool_idle_timeout)
-            .pool_max_idle_per_host(config.pool_max_idle_per_host)
-            .https_only(true); // Only use HTTPS for security
+            .pool_max_idle_per_host(config.pool_max_idle_per_host);
+
+        // Only use HTTPS for security (unless explicitly allowing HTTP for testing)
+        if !allow_http {
+            client_builder = client_builder.https_only(true);
+        }
 
         // Add gzip support conditionally (reqwest enables it by default, disable if needed)
         if !config.gzip {
             client_builder = client_builder.no_gzip();
         }
 
-        let client = client_builder
+        client_builder
             .build()
-            .context("Failed to build HTTP client")?;
-
-        debug!(
-            user_agent = %config.user_agent,
-            timeout_secs = config.timeout.as_secs(),
-            connect_timeout_secs = config.connect_timeout.as_secs(),
-            max_redirects = config.max_redirects,
-            gzip = config.gzip,
-            "Created HTTP client with configuration"
-        );
-
-        Ok(Self {
-            client,
-            config,
-            base_url: "https://docs.rs".to_string(),
-        })
+            .context("Failed to build HTTP client")
     }
 
     /// Get a reference to the client configuration
@@ -126,43 +135,7 @@ impl DocsClient {
     #[cfg(test)]
     pub fn test_client() -> Result<Self> {
         let config = ClientConfig::default();
-        let mut headers = header::HeaderMap::new();
-
-        // Set user agent
-        headers.insert(
-            header::USER_AGENT,
-            header::HeaderValue::from_str(&config.user_agent).map_err(|e| {
-                rustacean_docs_core::Error::internal(format!("Invalid user agent string: {e}"))
-            })?,
-        );
-
-        // Set accept header to prefer JSON when available
-        headers.insert(
-            header::ACCEPT,
-            header::HeaderValue::from_static("application/json, text/html, */*"),
-        );
-
-        // Note: We don't manually set Accept-Encoding header here.
-        // reqwest automatically handles gzip compression when we don't set it manually,
-        // and will automatically decompress responses for us.
-
-        // Build the client with configuration (no HTTPS restriction for testing)
-        let mut client_builder = ClientBuilder::new()
-            .default_headers(headers)
-            .timeout(config.timeout)
-            .connect_timeout(config.connect_timeout)
-            .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
-            .pool_idle_timeout(config.pool_idle_timeout)
-            .pool_max_idle_per_host(config.pool_max_idle_per_host);
-
-        // Add gzip support conditionally (reqwest enables it by default, disable if needed)
-        if !config.gzip {
-            client_builder = client_builder.no_gzip();
-        }
-
-        let client = client_builder
-            .build()
-            .context("Failed to build HTTP client")?;
+        let client = Self::build_client(&config, true)?; // Allow HTTP for testing
 
         Ok(Self {
             client,
