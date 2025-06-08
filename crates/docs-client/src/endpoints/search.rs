@@ -4,6 +4,7 @@ use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
     error::ErrorContext,
     models::search::{CrateSearchResult, SearchRequest, SearchResponse},
+    DEFAULT_VERSION,
     Result,
 };
 use serde::{Deserialize, Serialize};
@@ -275,9 +276,9 @@ fn transform_crate_data(crate_data: CratesIoCrate) -> Result<CrateSearchResult> 
         _ => None,
     };
 
-    // Generate docs.rs URL
+    // Generate docs.rs URL with version
     let docs_url = Some(
-        Url::parse(&format!("https://docs.rs/{}", crate_data.name))
+        Url::parse(&format!("https://docs.rs/{}/{}/{}/", crate_data.name, DEFAULT_VERSION, crate_data.name))
             .context("Failed to construct docs.rs URL")?,
     );
 
@@ -302,19 +303,42 @@ mod tests {
     use serde_json::json;
     use std::time::Duration;
 
+    fn create_test_crate(name: &str, version: &str) -> CratesIoCrate {
+        CratesIoCrate {
+            id: name.to_string(),
+            name: name.to_string(),
+            newest_version: version.to_string(),
+            max_version: version.to_string(),
+            max_stable_version: version.to_string(),
+            default_version: version.to_string(),
+            description: None,
+            downloads: None,
+            recent_downloads: None,
+            updated_at: Some(Utc::now()),
+            created_at: Some(Utc::now()),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            keywords: None,
+            categories: None,
+            badges: vec![],
+            links: json!({}),
+            exact_match: false,
+            num_versions: 1,
+            versions: None,
+            yanked: false,
+        }
+    }
+
     #[test]
     fn test_transform_crate_data_complete() {
-        let crate_data = CratesIoCrate {
-            name: "tokio".to_string(),
-            newest_version: "1.0.0".to_string(),
-            description: Some("An event-driven, non-blocking I/O platform".to_string()),
-            downloads: Some(50000000),
-            updated_at: Some(Utc::now()),
-            repository: Some("https://github.com/tokio-rs/tokio".to_string()),
-            homepage: Some("https://tokio.rs".to_string()),
-            keywords: Some(vec!["async".to_string(), "io".to_string()]),
-            categories: Some(vec!["asynchronous".to_string()]),
-        };
+        let mut crate_data = create_test_crate("tokio", "1.0.0");
+        crate_data.description = Some("An event-driven, non-blocking I/O platform".to_string());
+        crate_data.downloads = Some(50000000);
+        crate_data.repository = Some("https://github.com/tokio-rs/tokio".to_string());
+        crate_data.homepage = Some("https://tokio.rs".to_string());
+        crate_data.keywords = Some(vec!["async".to_string(), "io".to_string()]);
+        crate_data.categories = Some(vec!["asynchronous".to_string()]);
 
         let result = transform_crate_data(crate_data.clone()).unwrap();
 
@@ -326,7 +350,7 @@ mod tests {
         );
         assert_eq!(result.download_count, Some(50000000));
         assert!(result.docs_url.is_some());
-        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/tokio");
+        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/tokio/latest/tokio/");
         assert!(result.repository.is_some());
         assert!(result.homepage.is_some());
         assert_eq!(result.keywords, vec!["async", "io"]);
@@ -335,17 +359,7 @@ mod tests {
 
     #[test]
     fn test_transform_crate_data_minimal() {
-        let crate_data = CratesIoCrate {
-            name: "minimal".to_string(),
-            newest_version: "0.1.0".to_string(),
-            description: None,
-            downloads: None,
-            updated_at: None,
-            repository: None,
-            homepage: None,
-            keywords: None,
-            categories: None,
-        };
+        let crate_data = create_test_crate("minimal", "0.1.0");
 
         let result = transform_crate_data(crate_data).unwrap();
 
@@ -354,7 +368,7 @@ mod tests {
         assert_eq!(result.description, None);
         assert_eq!(result.download_count, None);
         assert!(result.docs_url.is_some());
-        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/minimal");
+        assert_eq!(result.docs_url.unwrap().as_str(), "https://docs.rs/minimal/latest/minimal/");
         assert_eq!(result.repository, None);
         assert_eq!(result.homepage, None);
         assert!(result.keywords.is_empty());
@@ -363,17 +377,9 @@ mod tests {
 
     #[test]
     fn test_transform_crate_data_invalid_urls() {
-        let crate_data = CratesIoCrate {
-            name: "badurls".to_string(),
-            newest_version: "0.1.0".to_string(),
-            description: None,
-            downloads: None,
-            updated_at: None,
-            repository: Some("not-a-valid-url".to_string()),
-            homepage: Some("also-not-valid".to_string()),
-            keywords: None,
-            categories: None,
-        };
+        let mut crate_data = create_test_crate("badurls", "0.1.0");
+        crate_data.repository = Some("not-a-valid-url".to_string());
+        crate_data.homepage = Some("also-not-valid".to_string());
 
         let result = transform_crate_data(crate_data).unwrap();
 
@@ -385,17 +391,9 @@ mod tests {
 
     #[test]
     fn test_transform_crate_data_empty_urls() {
-        let crate_data = CratesIoCrate {
-            name: "emptyurls".to_string(),
-            newest_version: "0.1.0".to_string(),
-            description: None,
-            downloads: None,
-            updated_at: None,
-            repository: Some("".to_string()),
-            homepage: Some("".to_string()),
-            keywords: None,
-            categories: None,
-        };
+        let mut crate_data = create_test_crate("emptyurls", "0.1.0");
+        crate_data.repository = Some("".to_string());
+        crate_data.homepage = Some("".to_string());
 
         let result = transform_crate_data(crate_data).unwrap();
 
@@ -406,30 +404,15 @@ mod tests {
 
     #[test]
     fn test_transform_search_results() {
-        let crates = vec![
-            CratesIoCrate {
-                name: "crate1".to_string(),
-                newest_version: "1.0.0".to_string(),
-                description: Some("First crate".to_string()),
-                downloads: Some(1000),
-                updated_at: None,
-                repository: None,
-                homepage: None,
-                keywords: None,
-                categories: None,
-            },
-            CratesIoCrate {
-                name: "crate2".to_string(),
-                newest_version: "2.0.0".to_string(),
-                description: Some("Second crate".to_string()),
-                downloads: Some(2000),
-                updated_at: None,
-                repository: None,
-                homepage: None,
-                keywords: None,
-                categories: None,
-            },
-        ];
+        let mut crate1 = create_test_crate("crate1", "1.0.0");
+        crate1.description = Some("First crate".to_string());
+        crate1.downloads = Some(1000);
+        
+        let mut crate2 = create_test_crate("crate2", "2.0.0");
+        crate2.description = Some("Second crate".to_string());
+        crate2.downloads = Some(2000);
+        
+        let crates = vec![crate1, crate2];
 
         let results = transform_search_results(crates).unwrap();
 
@@ -445,15 +428,28 @@ mod tests {
         let json = json!({
             "crates": [
                 {
+                    "id": "serde",
                     "name": "serde",
                     "newest_version": "1.0.136",
+                    "max_version": "1.0.136",
+                    "max_stable_version": "1.0.136",
+                    "default_version": "1.0.136",
                     "description": "A generic serialization/deserialization framework",
                     "downloads": 123456789,
+                    "recent_downloads": 1000000,
                     "updated_at": "2023-01-01T00:00:00Z",
+                    "created_at": "2020-01-01T00:00:00Z",
                     "repository": "https://github.com/serde-rs/serde",
                     "homepage": "https://serde.rs",
+                    "documentation": "https://docs.rs/serde",
                     "keywords": ["serde", "serialization"],
-                    "categories": ["encoding"]
+                    "categories": ["encoding"],
+                    "badges": [],
+                    "links": {},
+                    "exact_match": true,
+                    "num_versions": 100,
+                    "yanked": false,
+                    "versions": null
                 }
             ],
             "meta": {

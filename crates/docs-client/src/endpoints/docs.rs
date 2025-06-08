@@ -7,6 +7,7 @@ use rustacean_docs_core::{
         CrateSummary, ItemDocsRequest, ItemDocsResponse, ItemKind, RecentReleasesRequest,
         RecentReleasesResponse, Visibility,
     },
+    resolve_version,
     Result,
 };
 use scraper::{Html, Selector};
@@ -236,11 +237,8 @@ impl DocsService {
 impl DocsClient {
     /// Get comprehensive crate documentation from docs.rs
     pub async fn get_crate_docs(&self, request: CrateDocsRequest) -> Result<CrateDocsResponse> {
-        let version_path = if let Some(ref version) = request.version {
-            format!("/{version}")
-        } else {
-            String::new()
-        };
+        let actual_version = resolve_version(request.version.clone());
+        let version_path = format!("/{actual_version}");
 
         let path = format!("/{}{version_path}/", request.crate_name);
 
@@ -266,15 +264,12 @@ impl DocsClient {
 
     /// Get specific item documentation from docs.rs
     pub async fn get_item_docs(&self, request: ItemDocsRequest) -> Result<ItemDocsResponse> {
-        let version_path = if let Some(ref version) = request.version {
-            format!("/{version}")
-        } else {
-            String::new()
-        };
+        let actual_version = resolve_version(request.version.clone());
+        let version_path = format!("/{actual_version}");
 
         // Try to resolve the item path - it might be a simple name or a full path
         let resolved_path = resolve_item_path(&request.item_path);
-        let path = format!("/{}{version_path}/{resolved_path}", request.crate_name);
+        let path = format!("/{}{version_path}/{}/{resolved_path}", request.crate_name, request.crate_name);
 
         trace!(
             crate_name = %request.crate_name,
@@ -333,9 +328,9 @@ fn parse_crate_documentation(
     let document = Html::parse_document(html);
 
     // Extract version from page if not provided
-    let actual_version = version.clone().unwrap_or_else(|| {
-        extract_version_from_page(&document).unwrap_or_else(|| "latest".to_string())
-    });
+    let actual_version = resolve_version(version.clone().or_else(|| {
+        extract_version_from_page(&document)
+    }));
 
     // Extract crate description
     let description = extract_crate_description(&document);
@@ -354,7 +349,7 @@ fn parse_crate_documentation(
 
     // Generate docs URL
     let docs_url = Some(
-        Url::parse(&format!("https://docs.rs/{crate_name}/{actual_version}"))
+        Url::parse(&format!("https://docs.rs/{crate_name}/{actual_version}/{crate_name}/"))
             .context("Failed to construct docs.rs URL")?,
     );
 
@@ -397,10 +392,10 @@ fn parse_item_documentation(
     let related_items = extract_related_items(&document);
 
     // Generate docs URL
-    let actual_version = version.clone().unwrap_or_else(|| "latest".to_string());
+    let actual_version = resolve_version(version.clone());
     let docs_url = Some(
         Url::parse(&format!(
-            "https://docs.rs/{crate_name}/{actual_version}/{item_path}"
+            "https://docs.rs/{crate_name}/{actual_version}/{crate_name}/{item_path}"
         ))
         .context("Failed to construct item docs URL")?,
     );

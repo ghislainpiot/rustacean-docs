@@ -17,7 +17,13 @@
       "Bash(rmdir:*)",
       "Bash(cargo:*)",
       "mcp__rust-docs__get_item_docs",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(./target/debug/rustacean-docs-cli:*)",
+      "Bash(target/debug/rustacean-docs-cli run:*)",
+      "Bash(target/debug/rustacean-docs-cli:*)",
+      "mcp__rust-docs__get_crate_metadata",
+      "mcp__rust-docs__list_recent_releases",
+      "mcp__rust-docs__get_cache_stats"
     ],
     "deny": []
   }

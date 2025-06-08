@@ -1,5 +1,6 @@
 pub mod error;
 pub mod models;
+pub mod utils;
 
 pub use error::{Error, ErrorCategory, ErrorContext, Result};
 
@@ -17,3 +18,6 @@ pub use models::{
     },
     search::{CrateSearchResult, SearchRequest, SearchResponse},
 };
+
+// Re-export version utilities
+pub use utils::version::{resolve_version, normalize_version, is_latest_version, to_optional_version, DEFAULT_VERSION};

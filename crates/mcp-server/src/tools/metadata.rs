@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
 use rustacean_docs_cache::TieredCache;
-use rustacean_docs_client::DocsClient;
+use rustacean_docs_client::{DocsClient, MetadataService};
 use rustacean_docs_core::{
     error::ErrorContext,
     models::metadata::{CrateMetadata, CrateMetadataRequest},
@@ -262,24 +262,32 @@ impl ToolHandler for CrateMetadataTool {
         // Convert to request
         let request = input.to_request();
 
-        // Use the docs client to fetch metadata (for now, we'll mock this)
-        // TODO: Implement actual metadata fetching once the endpoint is ready
         debug!(
             "Fetching metadata for crate: {} (version: {:?})",
             request.crate_name, request.version
         );
 
-        // For now, return a mock response indicating the feature is coming soon
-        let mock_metadata = self.create_mock_metadata(&request);
-        let formatted_response = self.format_metadata_response(&mock_metadata);
-
-        Ok(json!({
-            "status": "success",
-            "crate_name": request.crate_name,
-            "version": request.version.unwrap_or_else(|| "latest".to_string()),
-            "metadata": formatted_response,
-            "note": "Metadata fetching implementation is in progress. This is mock data for testing."
-        }))
+        // Create metadata service and fetch real data
+        // Note: We create a new client since MetadataService takes ownership
+        let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+        let metadata_service = MetadataService::new(new_client);
+        
+        match metadata_service.get_crate_metadata(&request).await {
+            Ok(metadata) => {
+                let formatted_response = self.format_metadata_response(&metadata);
+                
+                Ok(json!({
+                    "status": "success",
+                    "crate_name": request.crate_name,
+                    "version": request.version.unwrap_or_else(|| "latest".to_string()),
+                    "metadata": formatted_response
+                }))
+            }
+            Err(e) => {
+                debug!("Failed to fetch metadata: {}", e);
+                Err(anyhow::anyhow!("Failed to fetch metadata: {}", e))
+            }
+        }
     }
 
     fn description(&self) -> &str {
@@ -304,62 +312,6 @@ impl ToolHandler for CrateMetadataTool {
     }
 }
 
-impl CrateMetadataTool {
-    fn create_mock_metadata(&self, request: &CrateMetadataRequest) -> CrateMetadata {
-        use chrono::Utc;
-        use rustacean_docs_core::models::metadata::{
-            Dependency, DependencyKind, DownloadStats, VersionInfo,
-        };
-        use std::collections::HashMap;
-
-        let mut features = HashMap::new();
-        features.insert("default".to_string(), vec!["std".to_string()]);
-
-        CrateMetadata {
-            name: request.crate_name.clone(),
-            version: request
-                .version
-                .clone()
-                .unwrap_or_else(|| "1.0.0".to_string()),
-            description: Some(format!("Mock description for {}", request.crate_name)),
-            license: Some("MIT".to_string()),
-            repository: None,
-            homepage: None,
-            documentation: None,
-            authors: vec!["Mock Author".to_string()],
-            keywords: vec!["rust".to_string(), "library".to_string()],
-            categories: vec!["development-tools".to_string()],
-            downloads: DownloadStats {
-                total: 100000,
-                version: 5000,
-                recent: 1000,
-            },
-            versions: vec![VersionInfo {
-                num: "1.0.0".to_string(),
-                created_at: Utc::now(),
-                yanked: false,
-                rust_version: Some("1.70.0".to_string()),
-                downloads: 5000,
-                features: features.clone(),
-            }],
-            dependencies: vec![Dependency {
-                name: "serde".to_string(),
-                version_req: "^1.0".to_string(),
-                features: vec!["derive".to_string()],
-                optional: false,
-                default_features: true,
-                target: None,
-                kind: DependencyKind::Normal,
-            }],
-            dev_dependencies: vec![],
-            build_dependencies: vec![],
-            features,
-            rust_version: Some("1.70.0".to_string()),
-            created_at: Some(Utc::now()),
-            updated_at: Some(Utc::now()),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -429,11 +381,60 @@ mod tests {
 
     #[test]
     fn test_ecosystem_analysis() {
-        let tool = CrateMetadataTool::new();
-        let request = CrateMetadataRequest::new("test");
-        let mock_metadata = tool.create_mock_metadata(&request);
+        use chrono::Utc;
+        use rustacean_docs_core::models::metadata::{
+            Dependency, DependencyKind, DownloadStats, VersionInfo,
+        };
+        use std::collections::HashMap;
 
-        let analysis = tool.analyze_ecosystem(&mock_metadata);
+        let tool = CrateMetadataTool::new();
+        
+        // Create test metadata
+        let mut features = HashMap::new();
+        features.insert("default".to_string(), vec!["std".to_string()]);
+
+        let test_metadata = CrateMetadata {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("Test crate".to_string()),
+            license: Some("MIT".to_string()),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            authors: vec!["Test Author".to_string()],
+            keywords: vec!["rust".to_string(), "library".to_string()],
+            categories: vec!["development-tools".to_string()],
+            downloads: DownloadStats {
+                total: 100000,
+                version: 5000,
+                recent: 1000,
+            },
+            versions: vec![VersionInfo {
+                num: "1.0.0".to_string(),
+                created_at: Utc::now(),
+                yanked: false,
+                rust_version: Some("1.70.0".to_string()),
+                downloads: 5000,
+                features: features.clone(),
+            }],
+            dependencies: vec![Dependency {
+                name: "serde".to_string(),
+                version_req: "^1.0".to_string(),
+                features: vec!["derive".to_string()],
+                optional: false,
+                default_features: true,
+                target: None,
+                kind: DependencyKind::Normal,
+            }],
+            dev_dependencies: vec![],
+            build_dependencies: vec![],
+            features,
+            rust_version: Some("1.70.0".to_string()),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
+        };
+
+        let analysis = tool.analyze_ecosystem(&test_metadata);
         assert!(analysis["dependency_analysis"].is_object());
         assert!(analysis["popularity"].is_object());
         assert!(analysis["maintenance"].is_object());

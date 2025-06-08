@@ -4,5 +4,5 @@ pub mod endpoints;
 pub use client::{ClientConfig, DocsClient};
 pub use endpoints::{
     CrateDocsCacheKey, DocsService, ItemDocsCacheKey, RecentReleasesCacheKey, SearchCacheKey,
-    SearchService,
+    SearchService, MetadataCacheKey, MetadataService, ReleasesCacheKey, ReleasesService,
 };

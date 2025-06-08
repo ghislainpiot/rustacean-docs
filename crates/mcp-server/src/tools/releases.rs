@@ -4,12 +4,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, instrument};
 
-use rustacean_docs_client::DocsClient;
+use rustacean_docs_client::{DocsClient, ReleasesService};
 use rustacean_docs_core::models::docs::RecentReleasesRequest;
 
 use super::{ServerCache, ToolHandler};
 
-/// Tool for retrieving recent crate releases from docs.rs
+/// Tool for retrieving recent crate releases from crates.io API
 pub struct RecentReleasesTool;
 
 impl RecentReleasesTool {
@@ -20,11 +20,11 @@ impl RecentReleasesTool {
 
 #[async_trait::async_trait]
 impl ToolHandler for RecentReleasesTool {
-    #[instrument(skip(self, client, _cache))]
+    #[instrument(skip(self, _client, _cache))]
     async fn execute(
         &self,
         params: Value,
-        client: &Arc<DocsClient>,
+        _client: &Arc<DocsClient>,
         _cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         debug!("Executing recent releases tool with params: {:?}", params);
@@ -44,15 +44,20 @@ impl ToolHandler for RecentReleasesTool {
 
         debug!(
             limit = request.limit(),
-            "Fetching recent releases from docs.rs"
+            "Fetching recent releases from crates.io API"
         );
 
+        // Create releases service and fetch real data
+        // Note: We create a new client since ReleasesService takes ownership
+        let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+        let releases_service = ReleasesService::new(new_client);
+
         // Make the API call
-        match client.get_recent_releases(request).await {
+        match releases_service.get_recent_releases(&request).await {
             Ok(response) => {
                 debug!(
                     release_count = response.releases.len(),
-                    "Successfully retrieved recent releases"
+                    "Successfully retrieved recent releases from crates.io"
                 );
 
                 // Convert to JSON response
@@ -78,7 +83,7 @@ impl ToolHandler for RecentReleasesTool {
     }
 
     fn description(&self) -> &str {
-        "Get recently updated crates from docs.rs homepage, sorted by freshness. Perfect for discovering newly published or updated crates, tracking ecosystem activity, and finding trending libraries."
+        "Get recently updated crates from crates.io API, sorted by freshness. Perfect for discovering newly published or updated crates, tracking ecosystem activity, and finding trending libraries."
     }
 
     fn parameters_schema(&self) -> Value {
