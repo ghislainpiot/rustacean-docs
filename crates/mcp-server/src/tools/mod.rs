@@ -3,9 +3,10 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 
+pub mod cache_ops;
 pub mod crate_docs;
 pub mod item_docs;
 pub mod metadata;
@@ -13,14 +14,15 @@ pub mod releases;
 pub mod search;
 
 // Re-export tools for convenience
+pub use cache_ops::{CacheMaintenanceTool, CacheStatsTool, ClearCacheTool};
 pub use crate_docs::CrateDocsTool;
 pub use item_docs::ItemDocsTool;
-pub use metadata::{CacheStatsTool, ClearCacheTool, CrateMetadataTool};
+pub use metadata::CrateMetadataTool;
 pub use releases::RecentReleasesTool;
 pub use search::SearchTool;
 
 // Type alias for our specific cache implementation
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 #[async_trait::async_trait]
 pub trait ToolHandler: Send + Sync {

@@ -3,7 +3,7 @@
 //! Tests the complete documentation retrieval and caching workflow,
 //! including crate docs, item docs, and version-specific requests.
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_mcp_server::tools::{
     crate_docs::CrateDocsTool, item_docs::ItemDocsTool, ToolHandler,
@@ -14,16 +14,24 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 /// Create test environment optimized for documentation caching
 async fn create_docs_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
+    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
     // Documentation cache: 500 entries, 2 hour TTL
-    let cache = Arc::new(RwLock::new(MemoryCache::new(
-        500,
-        Duration::from_secs(7200),
-    )));
+    let cache = Arc::new(RwLock::new(
+        TieredCache::new(
+            500,
+            Duration::from_secs(7200),
+            temp_dir,
+            Duration::from_secs(14400), // 4 hours disk TTL
+            100 * 1024 * 1024,          // 100MB disk cache
+        )
+        .await
+        .expect("Failed to create TieredCache"),
+    ));
     (client, cache)
 }
 
@@ -52,7 +60,7 @@ fn create_mock_crate_docs(crate_name: &str, version: &str) -> Value {
                 },
                 {
                     "name": "Error",
-                    "path": "enum.Error.html", 
+                    "path": "enum.Error.html",
                     "type": "enum",
                     "visibility": "pub",
                     "description": "Error types"
@@ -108,7 +116,7 @@ fn create_mock_item_docs(crate_name: &str, item_path: &str) -> Value {
                 "description": "First field"
             },
             {
-                "name": "field2", 
+                "name": "field2",
                 "type": "Option<u32>",
                 "description": "Optional second field"
             }
@@ -140,10 +148,13 @@ async fn test_crate_docs_integration() {
     // Pre-populate cache with mock response
     let cache_key = "crate_docs:integration-test-crate:latest";
     let mock_response = create_mock_crate_docs("integration-test-crate", "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(cache_key.to_string(), mock_response.clone()).await;
+        cache_guard
+            .insert(cache_key.to_string(), mock_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     // Execute tool and verify response
@@ -166,24 +177,30 @@ async fn test_crate_docs_integration() {
 
     let versioned_cache_key = "crate_docs:integration-test-crate:1.0.0";
     let versioned_response = create_mock_crate_docs("integration-test-crate", "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(versioned_cache_key.to_string(), versioned_response.clone()).await;
+        cache_guard
+            .insert(versioned_cache_key.to_string(), versioned_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     let versioned_result = tool.execute(versioned_params, &client, &cache).await;
-    assert!(versioned_result.is_ok(), "Versioned crate docs should succeed");
+    assert!(
+        versioned_result.is_ok(),
+        "Versioned crate docs should succeed"
+    );
     assert_eq!(versioned_result.unwrap(), versioned_response);
 
     // Verify cache statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
-    assert!(cache_stats.hits >= 2, "Should have multiple cache hits");
-    assert_eq!(cache_stats.size, 2, "Should have 2 cached entries");
+    assert!(cache_stats.total_hits >= 2, "Should have multiple cache hits");
+    assert_eq!(cache_stats.memory.size + cache_stats.disk.size, 4, "Should have 2 cached entries (stored in both memory and disk)");
 }
 
 #[tokio::test]
@@ -203,10 +220,13 @@ async fn test_item_docs_integration() {
     // Pre-populate cache
     let cache_key = "item_docs:test-crate:struct.TestStruct.html:latest";
     let mock_response = create_mock_item_docs("test-crate", "struct.TestStruct.html");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(cache_key.to_string(), mock_response.clone()).await;
+        cache_guard
+            .insert(cache_key.to_string(), mock_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     // Execute and verify
@@ -230,10 +250,10 @@ async fn test_item_docs_integration() {
 
         let cache_key = format!("item_docs:test-crate:{}:latest", item_path);
         let response = create_mock_item_docs("test-crate", item_path);
-        
+
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, response.clone()).await;
+            cache_guard.insert(cache_key, response.clone()).await.expect("Failed to insert into cache");
         }
 
         let result = tool.execute(params, &client, &cache).await;
@@ -244,10 +264,10 @@ async fn test_item_docs_integration() {
     // Verify cache contains all items
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
-    assert!(final_stats.size >= 5, "Should have cached multiple items");
+    assert!(final_stats.memory.size + final_stats.disk.size >= 5, "Should have cached multiple items");
 }
 
 #[tokio::test]
@@ -271,15 +291,19 @@ async fn test_version_specific_docs() {
 
         let cache_key = format!("crate_docs:{}:{}", crate_name, version);
         let mock_response = create_mock_crate_docs(crate_name, version);
-        
+
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response.clone()).await;
+            cache_guard.insert(cache_key, mock_response.clone()).await.expect("Failed to insert into cache");
         }
 
         let result = crate_tool.execute(params, &client, &cache).await;
-        assert!(result.is_ok(), "Crate docs for version {} should succeed", version);
-        
+        assert!(
+            result.is_ok(),
+            "Crate docs for version {} should succeed",
+            version
+        );
+
         let response = result.unwrap();
         assert_eq!(response["version"], *version, "Should have correct version");
     }
@@ -295,30 +319,34 @@ async fn test_version_specific_docs() {
 
         let cache_key = format!("item_docs:{}:{}:{}", crate_name, item_path, version);
         let mock_response = create_mock_item_docs(crate_name, item_path);
-        
+
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response.clone()).await;
+            cache_guard.insert(cache_key, mock_response.clone()).await.expect("Failed to insert into cache");
         }
 
         let result = item_tool.execute(params, &client, &cache).await;
-        assert!(result.is_ok(), "Item docs for version {} should succeed", version);
+        assert!(
+            result.is_ok(),
+            "Item docs for version {} should succeed",
+            version
+        );
     }
 
     // Verify each version creates separate cache entries
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
     assert_eq!(
-        cache_stats.size, 
-        versions.len() * 2, // Both crate and item docs for each version
+        cache_stats.memory.size + cache_stats.disk.size,
+        versions.len() * 2 * 2, // Both crate and item docs for each version, stored in both memory and disk
         "Should have separate cache entries for each version"
     );
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_docs_cache_behavior() {
     let (client, cache) = create_docs_test_environment().await;
     let client = Arc::new(client);
@@ -334,10 +362,13 @@ async fn test_docs_cache_behavior() {
     // First request - cache miss scenario
     let cache_key = format!("crate_docs:{}:latest", crate_name);
     let mock_response = create_mock_crate_docs(crate_name, "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(cache_key.clone(), mock_response.clone()).await;
+        cache_guard
+            .insert(cache_key.clone(), mock_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     // Multiple requests should all hit cache
@@ -348,18 +379,25 @@ async fn test_docs_cache_behavior() {
         let duration = start_time.elapsed();
 
         assert!(result.is_ok(), "Request {} should succeed", i);
-        assert_eq!(result.unwrap(), mock_response, "Should return cached response");
+        assert_eq!(
+            result.unwrap(),
+            mock_response,
+            "Should return cached response"
+        );
         assert!(duration.as_millis() < 10, "Cache hit should be very fast");
     }
 
     // Verify cache hit statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
-    assert!(cache_stats.hits >= request_count as u64, "Should have multiple cache hits");
-    assert_eq!(cache_stats.size, 1, "Should only have one cached entry");
+    assert!(
+        cache_stats.total_hits >= request_count as u64,
+        "Should have multiple cache hits"
+    );
+    assert_eq!(cache_stats.memory.size + cache_stats.disk.size, 2, "Should only have one cached entry (stored in both memory and disk)");
 
     // Test cache key uniqueness with different parameters
     let different_version_params = json!({
@@ -369,23 +407,28 @@ async fn test_docs_cache_behavior() {
 
     let version_cache_key = format!("crate_docs:{}:2.0.0", crate_name);
     let version_response = create_mock_crate_docs(crate_name, "2.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(version_cache_key, version_response.clone()).await;
+        cache_guard
+            .insert(version_cache_key, version_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
-    let version_result = crate_tool.execute(different_version_params, &client, &cache).await;
+    let version_result = crate_tool
+        .execute(different_version_params, &client, &cache)
+        .await;
     assert!(version_result.is_ok(), "Different version should succeed");
     assert_eq!(version_result.unwrap(), version_response);
 
     // Should now have 2 cache entries
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
-    assert_eq!(final_stats.size, 2, "Should have 2 different cache entries");
+    assert_eq!(final_stats.memory.size + final_stats.disk.size, 4, "Should have 2 different cache entries (stored in both memory and disk)");
 }
 
 #[tokio::test]
@@ -406,18 +449,24 @@ async fn test_complete_documentation_workflow() {
 
     let crate_cache_key = format!("crate_docs:{}:latest", crate_name);
     let crate_response = create_mock_crate_docs(crate_name, "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(crate_cache_key, crate_response.clone()).await;
+        cache_guard
+            .insert(crate_cache_key, crate_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     let crate_result = crate_tool.execute(crate_params, &client, &cache).await;
     assert!(crate_result.is_ok(), "Crate docs should succeed");
-    
+
     let crate_docs = crate_result.unwrap();
     assert_eq!(crate_docs["name"], crate_name);
-    assert!(crate_docs["categories"].is_object(), "Should have categories");
+    assert!(
+        crate_docs["categories"].is_object(),
+        "Should have categories"
+    );
 
     // Step 2: Navigate to specific items from the crate docs
     let core_types = crate_docs["categories"]["core_types"].as_array().unwrap();
@@ -430,15 +479,22 @@ async fn test_complete_documentation_workflow() {
 
         let item_cache_key = format!("item_docs:{}:{}:latest", crate_name, item_path);
         let item_response = create_mock_item_docs(crate_name, item_path);
-        
+
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(item_cache_key, item_response.clone()).await;
+            cache_guard
+                .insert(item_cache_key, item_response.clone())
+                .await
+                .expect("Failed to insert into cache");
         }
 
         let item_result = item_tool.execute(item_params, &client, &cache).await;
-        assert!(item_result.is_ok(), "Item docs should succeed for {}", item_path);
-        
+        assert!(
+            item_result.is_ok(),
+            "Item docs should succeed for {}",
+            item_path
+        );
+
         let item_docs = item_result.unwrap();
         assert_eq!(item_docs["crate_name"], crate_name);
         assert_eq!(item_docs["item_path"], item_path);
@@ -452,27 +508,44 @@ async fn test_complete_documentation_workflow() {
 
     let versioned_cache_key = format!("crate_docs:{}:1.0.0", crate_name);
     let versioned_response = create_mock_crate_docs(crate_name, "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(versioned_cache_key, versioned_response.clone()).await;
+        cache_guard
+            .insert(versioned_cache_key, versioned_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
-    let versioned_result = crate_tool.execute(versioned_crate_params, &client, &cache).await;
-    assert!(versioned_result.is_ok(), "Versioned crate docs should succeed");
+    let versioned_result = crate_tool
+        .execute(versioned_crate_params, &client, &cache)
+        .await;
+    assert!(
+        versioned_result.is_ok(),
+        "Versioned crate docs should succeed"
+    );
 
     // Step 4: Verify complete workflow cache utilization
     let workflow_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
     println!("Workflow cache stats: {:?}", workflow_stats);
-    assert!(workflow_stats.size >= 3, "Should have cached multiple documentation pieces");
-    assert!(workflow_stats.hits >= 3, "Should have multiple cache hits during workflow");
+    assert!(
+        workflow_stats.memory.size + workflow_stats.disk.size >= 3,
+        "Should have cached multiple documentation pieces"
+    );
+    assert!(
+        workflow_stats.total_hits >= 3,
+        "Should have multiple cache hits during workflow"
+    );
 
-    let hit_rate = workflow_stats.hits as f64 / workflow_stats.requests as f64;
-    assert!(hit_rate > 0.8, "Documentation workflow should have high cache hit rate");
+    let hit_rate = workflow_stats.total_hits as f64 / workflow_stats.total_requests as f64;
+    assert!(
+        hit_rate > 0.8,
+        "Documentation workflow should have high cache hit rate"
+    );
 }
 
 #[tokio::test]
@@ -488,7 +561,10 @@ async fn test_docs_error_handling_integration() {
     let invalid_crate_cases = vec![
         (json!({}), "missing crate_name"),
         (json!({"crate_name": ""}), "empty crate_name"),
-        (json!({"crate_name": "test", "version": ""}), "empty version"),
+        (
+            json!({"crate_name": "test", "version": ""}),
+            "empty version",
+        ),
         (json!({"crate_name": 123}), "non-string crate_name"),
     ];
 
@@ -497,12 +573,18 @@ async fn test_docs_error_handling_integration() {
         assert!(result.is_err(), "Should fail for: {}", description);
     }
 
-    // Test invalid parameters for item docs  
+    // Test invalid parameters for item docs
     let invalid_item_cases = vec![
         (json!({"crate_name": "test"}), "missing item_path"),
         (json!({"item_path": "test"}), "missing crate_name"),
-        (json!({"crate_name": "", "item_path": "test"}), "empty crate_name"),
-        (json!({"crate_name": "test", "item_path": ""}), "empty item_path"),
+        (
+            json!({"crate_name": "", "item_path": "test"}),
+            "empty crate_name",
+        ),
+        (
+            json!({"crate_name": "test", "item_path": ""}),
+            "empty item_path",
+        ),
     ];
 
     for (params, description) in invalid_item_cases {
@@ -517,10 +599,13 @@ async fn test_docs_error_handling_integration() {
 
     let cache_key = "crate_docs:error-recovery-test:latest";
     let mock_response = create_mock_crate_docs("error-recovery-test", "1.0.0");
-    
+
     {
         let cache_guard = cache.write().await;
-        cache_guard.insert(cache_key.to_string(), mock_response.clone()).await;
+        cache_guard
+            .insert(cache_key.to_string(), mock_response.clone())
+            .await
+            .expect("Failed to insert into cache");
     }
 
     let result = crate_tool.execute(valid_params, &client, &cache).await;
@@ -545,7 +630,7 @@ async fn test_docs_performance_characteristics() {
 
         {
             let cache_guard = cache.write().await;
-            cache_guard.insert(cache_key, mock_response).await;
+            cache_guard.insert(cache_key, mock_response).await.expect("Failed to insert into cache");
         }
     }
 
@@ -563,13 +648,19 @@ async fn test_docs_performance_characteristics() {
         let lookup_duration = lookup_start.elapsed();
 
         assert!(result.is_ok(), "Performance test {} should succeed", i);
-        assert!(lookup_duration.as_millis() < 5, "Each lookup should be very fast");
+        assert!(
+            lookup_duration.as_millis() < 5,
+            "Each lookup should be very fast"
+        );
     }
 
     let total_duration = start_time.elapsed();
     let avg_duration = total_duration / crate_count;
 
-    println!("Total time for {} doc lookups: {:?}", crate_count, total_duration);
+    println!(
+        "Total time for {} doc lookups: {:?}",
+        crate_count, total_duration
+    );
     println!("Average time per lookup: {:?}", avg_duration);
 
     // Performance assertions for documentation access
@@ -586,12 +677,15 @@ async fn test_docs_performance_characteristics() {
     // Verify cache efficiency
     let perf_stats = {
         let cache_guard = cache.read().await;
-        cache_guard.stats().await
+        cache_guard.stats().await.expect("Failed to get cache stats")
     };
 
-    assert_eq!(perf_stats.size, crate_count as usize);
-    assert!(perf_stats.hits >= crate_count as u64);
+    assert_eq!(perf_stats.memory.size + perf_stats.disk.size, crate_count as usize * 2);
+    assert!(perf_stats.total_hits >= crate_count as u64);
 
-    let hit_rate = perf_stats.hits as f64 / perf_stats.requests as f64;
-    assert!(hit_rate > 0.95, "Documentation cache should have very high hit rate");
+    let hit_rate = perf_stats.total_hits as f64 / perf_stats.total_requests as f64;
+    assert!(
+        hit_rate > 0.95,
+        "Documentation cache should have very high hit rate"
+    );
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{
     error::ErrorContext,
@@ -16,7 +16,7 @@ use rustacean_docs_core::{
 use crate::tools::ToolHandler;
 
 // Type alias for our specific cache implementation
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 /// Input parameters for the search_crate tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,7 +129,7 @@ impl ToolHandler for SearchTool {
         // Try to get from cache first
         {
             let cache_guard = cache.read().await;
-            if let Some(cached_result) = cache_guard.get(&cache_key).await {
+            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
                 trace!(
                     query = %input.query,
                     cache_key = %cache_key,
@@ -164,10 +164,13 @@ impl ToolHandler for SearchTool {
 
         // Store in cache for future requests
         {
-            let cache_guard = cache.write().await;
-            cache_guard
+            let cache_guard = cache.read().await;
+            if let Err(e) = cache_guard
                 .insert(cache_key.clone(), json_response.clone())
-                .await;
+                .await
+            {
+                debug!("Failed to cache search result: {}", e);
+            }
         }
 
         trace!(

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{
     error::ErrorContext,
@@ -16,7 +16,7 @@ use rustacean_docs_core::{
 use crate::tools::ToolHandler;
 
 // Type alias for our specific cache implementation
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 /// Input parameters for the get_crate_docs tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,7 +160,7 @@ impl ToolHandler for CrateDocsTool {
         // Try to get from cache first
         {
             let cache_guard = cache.read().await;
-            if let Some(cached_result) = cache_guard.get(&cache_key).await {
+            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
                 trace!(
                     crate_name = %input.crate_name,
                     version = ?input.version,
@@ -200,10 +200,13 @@ impl ToolHandler for CrateDocsTool {
 
         // Store in cache for future requests
         {
-            let cache_guard = cache.write().await;
-            cache_guard
+            let cache_guard = cache.read().await;
+            if let Err(e) = cache_guard
                 .insert(cache_key.clone(), json_response.clone())
-                .await;
+                .await
+            {
+                debug!("Failed to cache crate docs result: {}", e);
+            }
         }
 
         trace!(

@@ -3,7 +3,7 @@
 //! These tests verify that our tools correctly implement the MCP protocol
 //! specifications and provide the expected interfaces.
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_mcp_server::tools::{search::SearchTool, ToolHandler};
 use serde_json::{json, Value};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 /// Test that tools implement the required ToolHandler trait
 #[tokio::test]
@@ -516,9 +516,17 @@ async fn test_tool_json_schema_validation() {
 
 async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let cache = Arc::new(RwLock::new(MemoryCache::new(
-        100,
-        Duration::from_secs(3600),
-    )));
+    let temp_dir = std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
+    let cache = Arc::new(RwLock::new(
+        TieredCache::new(
+            100,
+            Duration::from_secs(3600),
+            temp_dir,
+            Duration::from_secs(7200), // 2 hours disk TTL
+            50 * 1024 * 1024,          // 50MB disk cache
+        )
+        .await
+        .expect("Failed to create TieredCache"),
+    ));
     (client, cache)
 }

@@ -25,6 +25,7 @@ url.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"
+rand = "0.8"
 
 # Disable running as a normal library
 [lib]

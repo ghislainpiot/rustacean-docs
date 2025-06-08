@@ -148,7 +148,7 @@ mod tests {
         // Test without limit parameter
         let params_empty = json!({});
         // Similarly, we'd need a mock setup to test the full execution
-        
+
         // For now, just verify the tool can be created and has the right interface
         assert!(!tool.description().is_empty());
         assert!(tool.parameters_schema()["properties"]["limit"].is_object());

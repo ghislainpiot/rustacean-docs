@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
 
     // Create and initialize the MCP server
-    let mut server = McpServer::new(config)?;
+    let mut server = McpServer::new(config).await?;
     server.initialize().await?;
 
     // Display server information

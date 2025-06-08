@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{
     error::ErrorContext,
@@ -16,7 +16,7 @@ use rustacean_docs_core::{
 use crate::tools::ToolHandler;
 
 // Type alias for our specific cache implementation
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 /// Input parameters for the get_crate_metadata tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +66,15 @@ impl CrateMetadataTool {
     pub fn new() -> Self {
         Self
     }
+}
 
+impl Default for CrateMetadataTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CrateMetadataTool {
     fn format_metadata_response(&self, metadata: &CrateMetadata) -> Value {
         json!({
             "summary": {
@@ -141,7 +149,7 @@ impl CrateMetadataTool {
                     })
                 }).collect::<Vec<_>>()
             },
-            "ecosystem": self.analyze_ecosystem(&metadata)
+            "ecosystem": self.analyze_ecosystem(metadata)
         })
     }
 
@@ -152,21 +160,31 @@ impl CrateMetadataTool {
         let total_deps = dep_count + dev_dep_count + build_dep_count;
 
         // Analyze dependency patterns
-        let async_deps = metadata.dependencies.iter()
-            .chain(metadata.dev_dependencies.iter())
-            .any(|dep| dep.name.contains("tokio") || dep.name.contains("async") || dep.name.contains("futures"));
-
-        let web_deps = metadata.dependencies.iter()
+        let async_deps = metadata
+            .dependencies
+            .iter()
             .chain(metadata.dev_dependencies.iter())
             .any(|dep| {
-                dep.name.contains("reqwest") || 
-                dep.name.contains("hyper") || 
-                dep.name.contains("axum") ||
-                dep.name.contains("warp") ||
-                dep.name.contains("actix")
+                dep.name.contains("tokio")
+                    || dep.name.contains("async")
+                    || dep.name.contains("futures")
             });
 
-        let serde_deps = metadata.dependencies.iter()
+        let web_deps = metadata
+            .dependencies
+            .iter()
+            .chain(metadata.dev_dependencies.iter())
+            .any(|dep| {
+                dep.name.contains("reqwest")
+                    || dep.name.contains("hyper")
+                    || dep.name.contains("axum")
+                    || dep.name.contains("warp")
+                    || dep.name.contains("actix")
+            });
+
+        let serde_deps = metadata
+            .dependencies
+            .iter()
             .chain(metadata.dev_dependencies.iter())
             .any(|dep| dep.name.contains("serde"));
 
@@ -228,7 +246,7 @@ impl ToolHandler for CrateMetadataTool {
     async fn execute(
         &self,
         params: Value,
-        client: &Arc<DocsClient>,
+        _client: &Arc<DocsClient>,
         _cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         debug!("Executing get_crate_metadata tool with params: {}", params);
@@ -236,7 +254,7 @@ impl ToolHandler for CrateMetadataTool {
         // Parse and validate input
         let input: MetadataToolInput = serde_json::from_value(params)
             .with_context(|| "Invalid input parameters for get_crate_metadata".to_string())?;
-        
+
         input.validate()?;
 
         trace!("Validated input for crate: {}", input.crate_name);
@@ -246,7 +264,10 @@ impl ToolHandler for CrateMetadataTool {
 
         // Use the docs client to fetch metadata (for now, we'll mock this)
         // TODO: Implement actual metadata fetching once the endpoint is ready
-        debug!("Fetching metadata for crate: {} (version: {:?})", request.crate_name, request.version);
+        debug!(
+            "Fetching metadata for crate: {} (version: {:?})",
+            request.crate_name, request.version
+        );
 
         // For now, return a mock response indicating the feature is coming soon
         let mock_metadata = self.create_mock_metadata(&request);
@@ -285,16 +306,21 @@ impl ToolHandler for CrateMetadataTool {
 
 impl CrateMetadataTool {
     fn create_mock_metadata(&self, request: &CrateMetadataRequest) -> CrateMetadata {
-        use std::collections::HashMap;
         use chrono::Utc;
-        use rustacean_docs_core::models::metadata::{DownloadStats, VersionInfo, Dependency, DependencyKind};
+        use rustacean_docs_core::models::metadata::{
+            Dependency, DependencyKind, DownloadStats, VersionInfo,
+        };
+        use std::collections::HashMap;
 
         let mut features = HashMap::new();
         features.insert("default".to_string(), vec!["std".to_string()]);
 
         CrateMetadata {
             name: request.crate_name.clone(),
-            version: request.version.clone().unwrap_or_else(|| "1.0.0".to_string()),
+            version: request
+                .version
+                .clone()
+                .unwrap_or_else(|| "1.0.0".to_string()),
             description: Some(format!("Mock description for {}", request.crate_name)),
             license: Some("MIT".to_string()),
             repository: None,
@@ -308,27 +334,23 @@ impl CrateMetadataTool {
                 version: 5000,
                 recent: 1000,
             },
-            versions: vec![
-                VersionInfo {
-                    num: "1.0.0".to_string(),
-                    created_at: Utc::now(),
-                    yanked: false,
-                    rust_version: Some("1.70.0".to_string()),
-                    downloads: 5000,
-                    features: features.clone(),
-                }
-            ],
-            dependencies: vec![
-                Dependency {
-                    name: "serde".to_string(),
-                    version_req: "^1.0".to_string(),
-                    features: vec!["derive".to_string()],
-                    optional: false,
-                    default_features: true,
-                    target: None,
-                    kind: DependencyKind::Normal,
-                }
-            ],
+            versions: vec![VersionInfo {
+                num: "1.0.0".to_string(),
+                created_at: Utc::now(),
+                yanked: false,
+                rust_version: Some("1.70.0".to_string()),
+                downloads: 5000,
+                features: features.clone(),
+            }],
+            dependencies: vec![Dependency {
+                name: "serde".to_string(),
+                version_req: "^1.0".to_string(),
+                features: vec!["derive".to_string()],
+                optional: false,
+                default_features: true,
+                target: None,
+                kind: DependencyKind::Normal,
+            }],
             dev_dependencies: vec![],
             build_dependencies: vec![],
             features,
@@ -336,96 +358,6 @@ impl CrateMetadataTool {
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
         }
-    }
-}
-
-/// Tool for cache statistics
-pub struct CacheStatsTool;
-
-impl CacheStatsTool {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait::async_trait]
-impl ToolHandler for CacheStatsTool {
-    async fn execute(
-        &self,
-        _params: Value,
-        _client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<ServerCache>>,
-    ) -> Result<Value> {
-        debug!("Executing get_cache_stats tool");
-
-        let cache_stats = {
-            let cache_guard = cache.read().await;
-            cache_guard.stats().await
-        };
-
-        Ok(json!({
-            "status": "success",
-            "cache_stats": cache_stats,
-            "message": "Cache statistics retrieved successfully"
-        }))
-    }
-
-    fn description(&self) -> &str {
-        "Get comprehensive cache statistics and performance metrics for debugging and monitoring. Use this to monitor cache effectiveness and identify performance bottlenecks."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "required": []
-        })
-    }
-}
-
-/// Tool for clearing cache
-pub struct ClearCacheTool;
-
-impl ClearCacheTool {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait::async_trait]
-impl ToolHandler for ClearCacheTool {
-    async fn execute(
-        &self,
-        _params: Value,
-        _client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<ServerCache>>,
-    ) -> Result<Value> {
-        debug!("Executing clear_cache tool");
-
-        let cleared_count = {
-            let cache_guard = cache.read().await;
-            // This would need to be updated once we have a proper cache interface
-            // For now, return a mock count
-            0
-        };
-
-        Ok(json!({
-            "status": "success",
-            "items_cleared": cleared_count,
-            "message": format!("Successfully cleared {} items from cache", cleared_count)
-        }))
-    }
-
-    fn description(&self) -> &str {
-        "Clear all cached data from both memory and disk storage. Use this for troubleshooting cache-related issues or forcing fresh data retrieval."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "required": []
-        })
     }
 }
 
@@ -464,7 +396,7 @@ mod tests {
             crate_name: "serde".to_string(),
             version: Some("1.0.0".to_string()),
         };
-        
+
         let request = input.to_request();
         assert_eq!(request.crate_name, "serde");
         assert_eq!(request.version, Some("1.0.0".to_string()));
@@ -473,7 +405,7 @@ mod tests {
             crate_name: "tokio".to_string(),
             version: None,
         };
-        
+
         let request_no_version = input_no_version.to_request();
         assert_eq!(request_no_version.crate_name, "tokio");
         assert_eq!(request_no_version.version, None);
@@ -482,29 +414,17 @@ mod tests {
     #[test]
     fn test_tool_descriptions() {
         let metadata_tool = CrateMetadataTool::new();
-        let cache_stats_tool = CacheStatsTool::new();
-        let clear_cache_tool = ClearCacheTool::new();
 
         assert!(!metadata_tool.description().is_empty());
-        assert!(!cache_stats_tool.description().is_empty());
-        assert!(!clear_cache_tool.description().is_empty());
     }
 
     #[test]
     fn test_tool_parameter_schemas() {
         let metadata_tool = CrateMetadataTool::new();
-        let cache_stats_tool = CacheStatsTool::new();
-        let clear_cache_tool = ClearCacheTool::new();
 
         let metadata_schema = metadata_tool.parameters_schema();
         assert!(metadata_schema["properties"]["crate_name"].is_object());
         assert_eq!(metadata_schema["required"], json!(["crate_name"]));
-
-        let cache_stats_schema = cache_stats_tool.parameters_schema();
-        assert_eq!(cache_stats_schema["required"], json!([]));
-
-        let clear_cache_schema = clear_cache_tool.parameters_schema();
-        assert_eq!(clear_cache_schema["required"], json!([]));
     }
 
     #[test]
@@ -512,7 +432,7 @@ mod tests {
         let tool = CrateMetadataTool::new();
         let request = CrateMetadataRequest::new("test");
         let mock_metadata = tool.create_mock_metadata(&request);
-        
+
         let analysis = tool.analyze_ecosystem(&mock_metadata);
         assert!(analysis["dependency_analysis"].is_object());
         assert!(analysis["popularity"].is_object());

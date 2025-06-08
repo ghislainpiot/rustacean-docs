@@ -6,14 +6,14 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
 use crate::tools::ToolHandler;
 
 // Type alias for our specific cache implementation
-type ServerCache = MemoryCache<String, Value>;
+type ServerCache = TieredCache<String, Value>;
 
 pub struct McpServer {
     tools: HashMap<String, Box<dyn ToolHandler>>,
@@ -44,15 +44,34 @@ impl Default for ServerConfig {
 }
 
 impl McpServer {
-    pub fn new(config: Config) -> Result<Self> {
+    pub async fn new(config: Config) -> Result<Self> {
         config.validate()?;
 
         let client = Arc::new(DocsClient::new()?);
-        let ttl = Duration::from_secs(config.cache.memory_ttl_secs);
-        let cache = Arc::new(RwLock::new(MemoryCache::new(
-            config.cache.memory_max_entries,
-            ttl,
-        )));
+
+        // Create cache directory if it doesn't exist
+        let cache_dir = dirs::cache_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("rustacean-docs");
+
+        if !cache_dir.exists() {
+            std::fs::create_dir_all(&cache_dir)?;
+        }
+
+        let memory_ttl = Duration::from_secs(config.cache.memory_ttl_secs);
+        let disk_ttl = Duration::from_secs(config.cache.disk_ttl_secs);
+        let disk_max_size = config.cache.disk_max_size_mb * 1024 * 1024; // Convert MB to bytes
+
+        let cache = Arc::new(RwLock::new(
+            TieredCache::new(
+                config.cache.memory_max_entries,
+                memory_ttl,
+                cache_dir,
+                disk_ttl,
+                disk_max_size,
+            )
+            .await?,
+        ));
 
         let mut server = Self {
             tools: HashMap::new(),
@@ -66,8 +85,8 @@ impl McpServer {
         Ok(server)
     }
 
-    pub fn with_default_config() -> Result<Self> {
-        Self::new(Config::load()?)
+    pub async fn with_default_config() -> Result<Self> {
+        Self::new(Config::load()?).await
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
@@ -101,14 +120,27 @@ impl McpServer {
         self.register_tool("get_item_docs", Box::new(crate::tools::ItemDocsTool::new()))?;
 
         // Register the metadata tool
-        self.register_tool("get_crate_metadata", Box::new(crate::tools::CrateMetadataTool::new()))?;
+        self.register_tool(
+            "get_crate_metadata",
+            Box::new(crate::tools::CrateMetadataTool::new()),
+        )?;
 
         // Register the recent releases tool
-        self.register_tool("list_recent_releases", Box::new(crate::tools::RecentReleasesTool::new()))?;
+        self.register_tool(
+            "list_recent_releases",
+            Box::new(crate::tools::RecentReleasesTool::new()),
+        )?;
 
         // Register cache management tools
-        self.register_tool("get_cache_stats", Box::new(crate::tools::CacheStatsTool::new()))?;
+        self.register_tool(
+            "get_cache_stats",
+            Box::new(crate::tools::CacheStatsTool::new()),
+        )?;
         self.register_tool("clear_cache", Box::new(crate::tools::ClearCacheTool::new()))?;
+        self.register_tool(
+            "cache_maintenance",
+            Box::new(crate::tools::CacheMaintenanceTool::new()),
+        )?;
 
         info!("Registered {} tools", self.tools.len());
         Ok(())
@@ -167,11 +199,8 @@ impl McpServer {
     }
 }
 
-impl Default for McpServer {
-    fn default() -> Self {
-        Self::with_default_config().expect("Failed to create default MCP server")
-    }
-}
+// Note: Default implementation is not provided for McpServer because it requires async initialization.
+// Use McpServer::with_default_config().await instead.
 
 #[cfg(test)]
 mod tests {
@@ -203,14 +232,14 @@ mod tests {
     #[tokio::test]
     async fn test_server_creation() {
         let config = Config::default();
-        let server = McpServer::new(config);
+        let server = McpServer::new(config).await;
         assert!(server.is_ok());
     }
 
     #[tokio::test]
     async fn test_server_initialization() {
         let config = Config::default();
-        let mut server = McpServer::new(config).unwrap();
+        let mut server = McpServer::new(config).await.unwrap();
         let result = server.initialize().await;
         assert!(result.is_ok());
     }
@@ -218,7 +247,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registration() {
         let config = Config::default();
-        let mut server = McpServer::new(config).unwrap();
+        let mut server = McpServer::new(config).await.unwrap();
 
         let tool = Box::new(MockTool);
         let result = server.register_tool("test_tool", tool);
@@ -231,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn test_duplicate_tool_registration() {
         let config = Config::default();
-        let mut server = McpServer::new(config).unwrap();
+        let mut server = McpServer::new(config).await.unwrap();
 
         let tool1 = Box::new(MockTool);
         let tool2 = Box::new(MockTool);
@@ -244,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_execution() {
         let config = Config::default();
-        let mut server = McpServer::new(config).unwrap();
+        let mut server = McpServer::new(config).await.unwrap();
 
         let tool = Box::new(MockTool);
         server.register_tool("test_tool", tool).unwrap();
@@ -260,17 +289,17 @@ mod tests {
     #[tokio::test]
     async fn test_unknown_tool_execution() {
         let config = Config::default();
-        let server = McpServer::new(config).unwrap();
+        let server = McpServer::new(config).await.unwrap();
 
         let params = serde_json::json!({});
         let result = server.handle_tool_call("unknown_tool", params).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_server_info() {
+    #[tokio::test]
+    async fn test_server_info() {
         let config = Config::default();
-        let server = McpServer::new(config).unwrap();
+        let server = McpServer::new(config).await.unwrap();
 
         let info = server.get_server_info();
         assert!(info["name"].is_string());
@@ -283,7 +312,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_shutdown() {
         let config = Config::default();
-        let server = McpServer::new(config).unwrap();
+        let server = McpServer::new(config).await.unwrap();
 
         let result = server.shutdown().await;
         assert!(result.is_ok());

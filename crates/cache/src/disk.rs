@@ -328,8 +328,7 @@ impl DiskCache {
             // Read and check if expired
             if let Ok(data) = cacache::read(&self.cache_dir, &metadata.key).await {
                 if let Ok(cache_entry) = serde_json::from_slice::<serde_json::Value>(&data) {
-                    if let Some(created_at) =
-                        cache_entry.get("created_at").and_then(|v| v.as_u64())
+                    if let Some(created_at) = cache_entry.get("created_at").and_then(|v| v.as_u64())
                     {
                         let now = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
@@ -773,9 +772,9 @@ mod tests {
             // Insert a value
             let key = format!("test_key_{}", description);
             let value = format!("test_value_{}", description);
-            
+
             cache.insert(key.clone(), value.clone()).await.unwrap();
-            
+
             // Verify it exists immediately
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
@@ -792,7 +791,7 @@ mod tests {
             // Wait for 75% of TTL and verify still exists
             let check_duration = Duration::from_millis((ttl.as_millis() as f64 * 0.75) as u64);
             sleep(check_duration).await;
-            
+
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 Some(value),
@@ -830,12 +829,12 @@ mod tests {
         for i in 0..5 {
             let key = format!("rapid_key_{}", i);
             let value = format!("rapid_value_{}", i);
-            
+
             cache.insert(key.clone(), value.clone()).await.unwrap();
-            
+
             // Sleep just enough to expire
             sleep(Duration::from_millis(120)).await;
-            
+
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 None,
@@ -845,16 +844,28 @@ mod tests {
         }
 
         // Test mixed fresh and expired entries
-        cache.insert("fresh".to_string(), "fresh_value".to_string()).await.unwrap();
-        cache.insert("expire1".to_string(), "expire_value1".to_string()).await.unwrap();
-        cache.insert("expire2".to_string(), "expire_value2".to_string()).await.unwrap();
-        
+        cache
+            .insert("fresh".to_string(), "fresh_value".to_string())
+            .await
+            .unwrap();
+        cache
+            .insert("expire1".to_string(), "expire_value1".to_string())
+            .await
+            .unwrap();
+        cache
+            .insert("expire2".to_string(), "expire_value2".to_string())
+            .await
+            .unwrap();
+
         // Wait for first two to expire
         sleep(Duration::from_millis(120)).await;
-        
+
         // Add fresh entry
-        cache.insert("fresh2".to_string(), "fresh_value2".to_string()).await.unwrap();
-        
+        cache
+            .insert("fresh2".to_string(), "fresh_value2".to_string())
+            .await
+            .unwrap();
+
         // Verify state
         assert_eq!(cache.get::<String>("fresh").await.unwrap(), None);
         assert_eq!(cache.get::<String>("expire1").await.unwrap(), None);
@@ -873,23 +884,39 @@ mod tests {
             .unwrap();
 
         // Insert entries at different times
-        cache.insert("early1".to_string(), "value1".to_string()).await.unwrap();
-        cache.insert("early2".to_string(), "value2".to_string()).await.unwrap();
-        
+        cache
+            .insert("early1".to_string(), "value1".to_string())
+            .await
+            .unwrap();
+        cache
+            .insert("early2".to_string(), "value2".to_string())
+            .await
+            .unwrap();
+
         // Wait for these to be close to expiration
         sleep(Duration::from_millis(80)).await;
-        
-        cache.insert("mid".to_string(), "mid_value".to_string()).await.unwrap();
-        
+
+        cache
+            .insert("mid".to_string(), "mid_value".to_string())
+            .await
+            .unwrap();
+
         // Wait for early entries to expire
         sleep(Duration::from_millis(50)).await;
-        
-        cache.insert("late".to_string(), "late_value".to_string()).await.unwrap();
-        
+
+        cache
+            .insert("late".to_string(), "late_value".to_string())
+            .await
+            .unwrap();
+
         // Manual cleanup should remove expired entries
         let expired_count = cache.cleanup_expired().await.unwrap();
-        assert!(expired_count >= 2, "Should clean up at least 2 expired entries, got {}", expired_count);
-        
+        assert!(
+            expired_count >= 2,
+            "Should clean up at least 2 expired entries, got {}",
+            expired_count
+        );
+
         // Verify state after cleanup
         assert_eq!(cache.get::<String>("early1").await.unwrap(), None);
         assert_eq!(cache.get::<String>("early2").await.unwrap(), None);
@@ -907,32 +934,38 @@ mod tests {
             .await
             .unwrap();
 
-        cache.insert("boundary".to_string(), "boundary_value".to_string()).await.unwrap();
-        
+        cache
+            .insert("boundary".to_string(), "boundary_value".to_string())
+            .await
+            .unwrap();
+
         // Test at exactly TTL boundary (should be expired)
         sleep(Duration::from_millis(100)).await;
-        
+
         // At exactly 100ms, entry should be expired
         assert_eq!(
             cache.get::<String>("boundary").await.unwrap(),
             None,
             "Entry should be expired at exact TTL boundary"
         );
-        
+
         // Test just before expiration with safer timing
-        cache.insert("boundary2".to_string(), "boundary_value2".to_string()).await.unwrap();
+        cache
+            .insert("boundary2".to_string(), "boundary_value2".to_string())
+            .await
+            .unwrap();
         sleep(Duration::from_millis(50)).await; // Well before expiration
-        
+
         // Should still be valid well before expiration
         assert_eq!(
             cache.get::<String>("boundary2").await.unwrap(),
             Some("boundary_value2".to_string()),
             "Entry should be valid well before expiration"
         );
-        
+
         // Wait for expiration with buffer
         sleep(Duration::from_millis(70)).await; // Total 120ms > 100ms TTL
-        
+
         assert_eq!(
             cache.get::<String>("boundary2").await.unwrap(),
             None,
@@ -946,7 +979,7 @@ mod tests {
         let cache = std::sync::Arc::new(
             DiskCache::new(temp_dir.path(), Duration::from_millis(200), 1024 * 1024)
                 .await
-                .unwrap()
+                .unwrap(),
         );
 
         let mut handles = vec![];
@@ -957,19 +990,19 @@ mod tests {
             let handle = tokio::spawn(async move {
                 let key = format!("concurrent_key_{}", i);
                 let value = format!("concurrent_value_{}", i);
-                
+
                 // Insert
-                cache_clone.insert(key.clone(), value.clone()).await.unwrap();
-                
+                cache_clone
+                    .insert(key.clone(), value.clone())
+                    .await
+                    .unwrap();
+
                 // Immediately verify
-                assert_eq!(
-                    cache_clone.get::<String>(&key).await.unwrap(),
-                    Some(value)
-                );
-                
+                assert_eq!(cache_clone.get::<String>(&key).await.unwrap(), Some(value));
+
                 // Wait for expiration
                 sleep(Duration::from_millis(250)).await;
-                
+
                 // Verify expired
                 assert_eq!(cache_clone.get::<String>(&key).await.unwrap(), None);
             });
@@ -983,6 +1016,9 @@ mod tests {
 
         // Verify cache is empty after all expirations
         let stats = cache.stats().await.unwrap();
-        assert_eq!(stats.size, 0, "Cache should be empty after all entries expired");
+        assert_eq!(
+            stats.size, 0,
+            "Cache should be empty after all entries expired"
+        );
     }
 }

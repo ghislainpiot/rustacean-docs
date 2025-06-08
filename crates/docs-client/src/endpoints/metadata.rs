@@ -1,13 +1,15 @@
 use crate::client::DocsClient;
+use chrono::Utc;
 use rustacean_docs_core::{
     error::Error,
-    models::metadata::{CrateMetadata, CrateMetadataRequest, Dependency, DependencyKind, DownloadStats, VersionInfo},
+    models::metadata::{
+        CrateMetadata, CrateMetadataRequest, Dependency, DependencyKind, DownloadStats, VersionInfo,
+    },
 };
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::{debug, error};
 use url::Url;
-use chrono::Utc;
 
 /// Cache key for metadata requests
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -17,6 +19,7 @@ pub struct MetadataCacheKey {
 }
 
 impl MetadataCacheKey {
+    #[allow(dead_code)]
     fn new(request: &CrateMetadataRequest) -> Self {
         Self {
             crate_name: request.crate_name.clone(),
@@ -34,6 +37,7 @@ struct CratesIoResponse {
 }
 
 /// Crate information from crates.io API
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct CratesIoCrate {
     id: String,
@@ -53,6 +57,7 @@ struct CratesIoCrate {
 }
 
 /// Version information from crates.io API
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct CratesIoVersion {
     id: u64,
@@ -72,6 +77,7 @@ struct CratesIoVersion {
 }
 
 /// User information from crates.io API
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct CratesIoUser {
     id: u64,
@@ -82,6 +88,7 @@ struct CratesIoUser {
 }
 
 /// Dependency information from crates.io API
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct CratesIoDependency {
     id: u64,
@@ -127,7 +134,10 @@ impl MetadataService {
     }
 
     /// Fetch comprehensive metadata for a crate
-    pub async fn get_crate_metadata(&self, request: &CrateMetadataRequest) -> Result<CrateMetadata, Error> {
+    pub async fn get_crate_metadata(
+        &self,
+        request: &CrateMetadataRequest,
+    ) -> Result<CrateMetadata, Error> {
         debug!("Fetching metadata for crate: {}", request.crate_name);
 
         // For now, directly fetch from API without caching
@@ -135,12 +145,17 @@ impl MetadataService {
         self.fetch_metadata_from_api(request).await
     }
 
-    async fn fetch_metadata_from_api(&self, request: &CrateMetadataRequest) -> Result<CrateMetadata, Error> {
+    async fn fetch_metadata_from_api(
+        &self,
+        request: &CrateMetadataRequest,
+    ) -> Result<CrateMetadata, Error> {
         let url = format!("https://crates.io/api/v1/crates/{}", request.crate_name);
-        
+
         debug!("Requesting metadata from: {}", url);
 
-        let response = self.client.inner_client()
+        let response = self
+            .client
+            .inner_client()
             .get(&url)
             .send()
             .await
@@ -153,19 +168,21 @@ impl MetadataService {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             error!("API request failed with status {}: {}", status, body);
-            
+
             return match status.as_u16() {
                 404 => Err(Error::crate_not_found(&request.crate_name)),
                 429 => Err(Error::RateLimit),
-                _ => Err(Error::http_request(format!("HTTP {}: {}", status, body), Some(status.as_u16()))),
+                _ => Err(Error::http_request(
+                    format!("HTTP {status}: {body}"),
+                    Some(status.as_u16()),
+                )),
             };
         }
 
-        let crates_io_response: CratesIoResponse = response.json().await
-            .map_err(|e| {
-                error!("Failed to parse crates.io response: {}", e);
-                Error::Network(e)
-            })?;
+        let crates_io_response: CratesIoResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse crates.io response: {}", e);
+            Error::Network(e)
+        })?;
 
         self.transform_metadata(crates_io_response, request).await
     }
@@ -176,27 +193,38 @@ impl MetadataService {
         request: &CrateMetadataRequest,
     ) -> Result<CrateMetadata, Error> {
         let crate_info = response.crate_info;
-        
+
         // Find the target version or use latest
-        let target_version = request.version.as_deref()
+        let target_version = request
+            .version
+            .as_deref()
             .unwrap_or(&crate_info.max_version);
 
-        let target_version_info = response.versions
+        let target_version_info = response
+            .versions
             .iter()
             .find(|v| v.num == target_version)
             .cloned()
-            .ok_or_else(|| Error::invalid_version(format!("Version {} not found for crate {}", target_version, request.crate_name)))?;
+            .ok_or_else(|| {
+                Error::invalid_version(format!(
+                    "Version {} not found for crate {}",
+                    target_version, request.crate_name
+                ))
+            })?;
 
         // Parse URLs safely
-        let repository = crate_info.repository
+        let repository = crate_info
+            .repository
             .as_ref()
             .and_then(|url_str| Url::parse(url_str).ok());
-        
-        let homepage = crate_info.homepage
+
+        let homepage = crate_info
+            .homepage
             .as_ref()
             .and_then(|url_str| Url::parse(url_str).ok());
-        
-        let documentation = crate_info.documentation
+
+        let documentation = crate_info
+            .documentation
             .as_ref()
             .and_then(|url_str| Url::parse(url_str).ok())
             .or_else(|| {
@@ -208,17 +236,18 @@ impl MetadataService {
         let created_at = chrono::DateTime::parse_from_rfc3339(&crate_info.created_at)
             .ok()
             .map(|dt| dt.with_timezone(&Utc));
-        
+
         let updated_at = chrono::DateTime::parse_from_rfc3339(&crate_info.updated_at)
             .ok()
             .map(|dt| dt.with_timezone(&Utc));
 
         // Extract dependencies before consuming the response
-        let (dependencies, dev_dependencies, build_dependencies) = 
-            self.categorize_dependencies(target_version_info.dependencies.as_ref().unwrap_or(&vec![]));
+        let (dependencies, dev_dependencies, build_dependencies) = self
+            .categorize_dependencies(target_version_info.dependencies.as_ref().unwrap_or(&vec![]));
 
         // Transform version information
-        let versions = response.versions
+        let versions = response
+            .versions
             .into_iter()
             .map(|v| {
                 let created_at = chrono::DateTime::parse_from_rfc3339(&v.created_at)
@@ -269,11 +298,17 @@ impl MetadataService {
             updated_at,
         };
 
-        debug!("Successfully transformed metadata for {}", request.crate_name);
+        debug!(
+            "Successfully transformed metadata for {}",
+            request.crate_name
+        );
         Ok(metadata)
     }
 
-    fn categorize_dependencies(&self, deps: &[CratesIoDependency]) -> (Vec<Dependency>, Vec<Dependency>, Vec<Dependency>) {
+    fn categorize_dependencies(
+        &self,
+        deps: &[CratesIoDependency],
+    ) -> (Vec<Dependency>, Vec<Dependency>, Vec<Dependency>) {
         let mut normal = Vec::new();
         let mut dev = Vec::new();
         let mut build = Vec::new();
@@ -294,7 +329,10 @@ impl MetadataService {
         // For now, we'll use the publisher information if available
         // In the future, we could fetch from Cargo.toml or other sources
         if let Some(ref publisher) = version_info.published_by {
-            vec![publisher.name.clone().unwrap_or_else(|| publisher.login.clone())]
+            vec![publisher
+                .name
+                .clone()
+                .unwrap_or_else(|| publisher.login.clone())]
         } else {
             vec![]
         }
@@ -313,7 +351,7 @@ mod tests {
     fn test_metadata_cache_key() {
         let req1 = CrateMetadataRequest::new("serde");
         let req2 = CrateMetadataRequest::with_version("serde", "1.0.0");
-        
+
         let key1 = MetadataCacheKey::new(&req1);
         let key2 = MetadataCacheKey::new(&req2);
 
@@ -339,7 +377,7 @@ mod tests {
         };
 
         let dependency = Dependency::from(crates_dep);
-        
+
         assert_eq!(dependency.name, "serde");
         assert_eq!(dependency.version_req, "^1.0");
         assert_eq!(dependency.features, vec!["derive"]);
@@ -352,21 +390,42 @@ mod tests {
     #[tokio::test]
     async fn test_dependency_kinds() {
         let normal_dep = CratesIoDependency {
-            id: 1, version_id: 1, crate_id: "serde".to_string(),
-            req: "^1.0".to_string(), optional: false, default_features: true,
-            features: vec![], target: None, kind: "normal".to_string(), downloads: None,
+            id: 1,
+            version_id: 1,
+            crate_id: "serde".to_string(),
+            req: "^1.0".to_string(),
+            optional: false,
+            default_features: true,
+            features: vec![],
+            target: None,
+            kind: "normal".to_string(),
+            downloads: None,
         };
 
         let dev_dep = CratesIoDependency {
-            id: 2, version_id: 1, crate_id: "tokio-test".to_string(),
-            req: "^0.4".to_string(), optional: false, default_features: true,
-            features: vec![], target: None, kind: "dev".to_string(), downloads: None,
+            id: 2,
+            version_id: 1,
+            crate_id: "tokio-test".to_string(),
+            req: "^0.4".to_string(),
+            optional: false,
+            default_features: true,
+            features: vec![],
+            target: None,
+            kind: "dev".to_string(),
+            downloads: None,
         };
 
         let build_dep = CratesIoDependency {
-            id: 3, version_id: 1, crate_id: "cc".to_string(),
-            req: "^1.0".to_string(), optional: false, default_features: true,
-            features: vec![], target: None, kind: "build".to_string(), downloads: None,
+            id: 3,
+            version_id: 1,
+            crate_id: "cc".to_string(),
+            req: "^1.0".to_string(),
+            optional: false,
+            default_features: true,
+            features: vec![],
+            target: None,
+            kind: "build".to_string(),
+            downloads: None,
         };
 
         assert_eq!(Dependency::from(normal_dep).kind, DependencyKind::Normal);
@@ -378,7 +437,7 @@ mod tests {
     fn test_metadata_service_creation() {
         let client = create_test_client();
         let _service = MetadataService::new(client);
-        
+
         // Basic verification that service can be created
         assert!(true);
     }

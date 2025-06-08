@@ -1,6 +1,6 @@
 use super::ToolHandler;
 use anyhow::Result;
-use rustacean_docs_cache::MemoryCache;
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::models::docs::ItemDocsRequest;
 use serde_json::{json, Value};
@@ -29,7 +29,7 @@ impl ToolHandler for ItemDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<MemoryCache<String, Value>>>,
+        cache: &Arc<RwLock<TieredCache<String, Value>>>,
     ) -> Result<Value> {
         trace!(params = ?params, "Executing item docs tool");
 
@@ -60,7 +60,7 @@ impl ToolHandler for ItemDocsTool {
         // Try to get from cache first
         {
             let cache_guard = cache.read().await;
-            if let Some(cached_result) = cache_guard.get(&cache_key).await {
+            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
                 trace!(
                     crate_name = %crate_name,
                     item_path = %item_path,
@@ -125,10 +125,13 @@ impl ToolHandler for ItemDocsTool {
 
         // Store in cache for future requests
         {
-            let cache_guard = cache.write().await;
-            cache_guard
+            let cache_guard = cache.read().await;
+            if let Err(e) = cache_guard
                 .insert(cache_key.clone(), json_response.clone())
-                .await;
+                .await
+            {
+                debug!("Failed to cache item docs result: {}", e);
+            }
         }
 
         trace!(
@@ -169,6 +172,25 @@ impl ToolHandler for ItemDocsTool {
 mod tests {
     use super::*;
 
+    async fn create_test_cache() -> Arc<RwLock<TieredCache<String, Value>>> {
+        let temp_dir = std::env::temp_dir().join("item_docs_test_cache");
+        if temp_dir.exists() {
+            std::fs::remove_dir_all(&temp_dir).ok();
+        }
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let cache = TieredCache::new(
+            10,
+            std::time::Duration::from_secs(60),
+            temp_dir,
+            std::time::Duration::from_secs(3600),
+            1024 * 1024,
+        )
+        .await
+        .unwrap();
+        Arc::new(RwLock::new(cache))
+    }
+
     #[test]
     fn test_item_docs_tool_creation() {
         let tool = ItemDocsTool::new();
@@ -199,10 +221,7 @@ mod tests {
     async fn test_execute_missing_crate_name() {
         let tool = ItemDocsTool::new();
         let client = Arc::new(DocsClient::new().unwrap());
-        let cache = Arc::new(RwLock::new(MemoryCache::new(
-            10,
-            std::time::Duration::from_secs(60),
-        )));
+        let cache = create_test_cache().await;
 
         let params = json!({
             "item_path": "spawn"
@@ -220,10 +239,7 @@ mod tests {
     async fn test_execute_missing_item_path() {
         let tool = ItemDocsTool::new();
         let client = Arc::new(DocsClient::new().unwrap());
-        let cache = Arc::new(RwLock::new(MemoryCache::new(
-            10,
-            std::time::Duration::from_secs(60),
-        )));
+        let cache = create_test_cache().await;
 
         let params = json!({
             "crate_name": "tokio"

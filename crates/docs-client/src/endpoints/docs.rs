@@ -819,18 +819,22 @@ fn extract_related_items(document: &Html) -> Vec<String> {
 /// Extract release information from HTML element
 fn extract_release_info(element: &scraper::ElementRef) -> Option<CrateRelease> {
     use chrono::Utc;
-    
+
     // Extract the link href to get crate name and version
     let _href = element.value().attr("href")?;
-    
+
     // Extract text content which should contain crate-version and description
     let text = element.text().collect::<String>();
-    let lines: Vec<&str> = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-    
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
     if lines.len() < 2 {
         return None;
     }
-    
+
     // First line should be crate-version
     let crate_version = lines[0];
     let (name, version) = if let Some(dash_pos) = crate_version.rfind('-') {
@@ -841,24 +845,24 @@ fn extract_release_info(element: &scraper::ElementRef) -> Option<CrateRelease> {
         // If no version separator found, treat the whole thing as name
         (crate_version.to_string(), "latest".to_string())
     };
-    
+
     // Second line should be description
     let description = if lines.len() > 1 && !lines[1].is_empty() {
         Some(lines[1].to_string())
     } else {
         None
     };
-    
+
     // Try to find publication time in the text (e.g., "18 seconds ago", "2 hours ago")
     let published_at = if let Some(time_line) = lines.iter().find(|line| line.contains("ago")) {
         parse_relative_time(time_line).unwrap_or_else(Utc::now)
     } else {
         Utc::now() // Fallback to current time
     };
-    
+
     // Generate docs URL
     let docs_url = Url::parse(&format!("https://docs.rs/{name}/{version}")).ok();
-    
+
     Some(CrateRelease {
         name,
         version,
@@ -871,19 +875,19 @@ fn extract_release_info(element: &scraper::ElementRef) -> Option<CrateRelease> {
 /// Parse relative time strings like "18 seconds ago", "2 hours ago" into DateTime
 fn parse_relative_time(time_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     use chrono::{Duration, Utc};
-    
+
     let time_str = time_str.trim().to_lowercase();
     let now = Utc::now();
-    
+
     // Extract number and unit from strings like "18 seconds ago"
     let parts: Vec<&str> = time_str.split_whitespace().collect();
     if parts.len() < 3 {
         return None;
     }
-    
+
     let amount: i64 = parts[0].parse().ok()?;
     let unit = parts[1];
-    
+
     let duration = match unit {
         "second" | "seconds" => Duration::seconds(amount),
         "minute" | "minutes" => Duration::minutes(amount),
@@ -892,14 +896,14 @@ fn parse_relative_time(time_str: &str) -> Option<chrono::DateTime<chrono::Utc>> 
         "week" | "weeks" => Duration::weeks(amount),
         _ => return None,
     };
-    
+
     Some(now - duration)
 }
 
 /// Fallback method to extract releases when structured parsing fails
 fn extract_releases_fallback(document: &Html, limit: usize) -> Result<Vec<CrateRelease>> {
     let mut releases = Vec::new();
-    
+
     // Try alternative selectors for release information
     let fallback_selectors = [
         "a[href*='/crates/']",
@@ -907,54 +911,55 @@ fn extract_releases_fallback(document: &Html, limit: usize) -> Result<Vec<CrateR
         "ul li a",
         ".content a[href^='/']",
     ];
-    
+
     for selector_str in &fallback_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
             for element in document.select(&selector).take(limit * 2) {
                 // Filter for elements that look like crate links
                 if let Some(href) = element.value().attr("href") {
-                    if href.contains("/crates/") || href.starts_with('/') && !href.starts_with("//") {
+                    if href.contains("/crates/") || href.starts_with('/') && !href.starts_with("//")
+                    {
                         if let Some(release) = extract_release_info_fallback(&element) {
                             releases.push(release);
                         }
                     }
                 }
-                
+
                 if releases.len() >= limit {
                     break;
                 }
             }
-            
+
             if !releases.is_empty() {
                 break;
             }
         }
     }
-    
+
     // Remove duplicates based on name+version
     releases.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
     releases.dedup_by(|a, b| a.name == b.name && a.version == b.version);
-    
+
     // Sort by publication date (newest first)
     releases.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    
+
     // Limit to requested amount
     releases.truncate(limit);
-    
+
     Ok(releases)
 }
 
 /// Fallback method to extract release information from any link element
 fn extract_release_info_fallback(element: &scraper::ElementRef) -> Option<CrateRelease> {
     use chrono::Utc;
-    
+
     let href = element.value().attr("href")?;
     let text = element.text().collect::<String>().trim().to_string();
-    
+
     if text.is_empty() {
         return None;
     }
-    
+
     // Try to extract crate name from href or text
     let name = if href.contains("/crates/") {
         // Extract from path like "/crates/serde/1.0.0"
@@ -965,29 +970,26 @@ fn extract_release_info_fallback(element: &scraper::ElementRef) -> Option<CrateR
             .to_string()
     } else if href.starts_with('/') {
         // Extract from path like "/serde/1.0.0"
-        href.trim_start_matches('/')
-            .split('/')
-            .next()?
-            .to_string()
+        href.trim_start_matches('/').split('/').next()?.to_string()
     } else {
         // Try to extract from text
         text.split_whitespace().next()?.to_string()
     };
-    
+
     // Simple version extraction - look for version patterns in href or text
     let version = extract_version_from_text(&text)
         .or_else(|| extract_version_from_href(href))
         .unwrap_or_else(|| "latest".to_string());
-    
+
     // Use text as description if it's not just the crate name
     let description = if text.len() > name.len() + 10 {
         Some(text)
     } else {
         None
     };
-    
+
     let docs_url = Url::parse(&format!("https://docs.rs/{name}/{version}")).ok();
-    
+
     Some(CrateRelease {
         name,
         version,
@@ -1000,7 +1002,7 @@ fn extract_release_info_fallback(element: &scraper::ElementRef) -> Option<CrateR
 /// Extract version from text using patterns
 fn extract_version_from_text(text: &str) -> Option<String> {
     use regex::Regex;
-    
+
     // Look for patterns like "1.0.0", "v1.0.0", "version 1.0.0"
     let version_pattern = Regex::new(r"v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)").ok()?;
     version_pattern
@@ -1015,7 +1017,11 @@ fn extract_version_from_href(href: &str) -> Option<String> {
     let parts: Vec<&str> = href.split('/').collect();
     if parts.len() >= 3 {
         let potential_version = parts[parts.len() - 1];
-        if potential_version.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        if potential_version
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+        {
             return Some(potential_version.to_string());
         }
     }
@@ -1335,11 +1341,26 @@ mod tests {
     #[test]
     fn test_extract_version_from_text() {
         // Test various version patterns
-        assert_eq!(extract_version_from_text("tokio-1.35.0"), Some("1.35.0".to_string()));
-        assert_eq!(extract_version_from_text("v1.2.3"), Some("1.2.3".to_string()));
-        assert_eq!(extract_version_from_text("version 2.0.0"), Some("2.0.0".to_string()));
-        assert_eq!(extract_version_from_text("serde 1.0.0-alpha1"), Some("1.0.0-alpha1".to_string()));
-        assert_eq!(extract_version_from_text("some text 3.1.4 more text"), Some("3.1.4".to_string()));
+        assert_eq!(
+            extract_version_from_text("tokio-1.35.0"),
+            Some("1.35.0".to_string())
+        );
+        assert_eq!(
+            extract_version_from_text("v1.2.3"),
+            Some("1.2.3".to_string())
+        );
+        assert_eq!(
+            extract_version_from_text("version 2.0.0"),
+            Some("2.0.0".to_string())
+        );
+        assert_eq!(
+            extract_version_from_text("serde 1.0.0-alpha1"),
+            Some("1.0.0-alpha1".to_string())
+        );
+        assert_eq!(
+            extract_version_from_text("some text 3.1.4 more text"),
+            Some("3.1.4".to_string())
+        );
 
         // Test no version found
         assert_eq!(extract_version_from_text("no version here"), None);
@@ -1350,9 +1371,18 @@ mod tests {
     #[test]
     fn test_extract_version_from_href() {
         // Test various href patterns
-        assert_eq!(extract_version_from_href("/crate/tokio/1.35.0"), Some("1.35.0".to_string()));
-        assert_eq!(extract_version_from_href("/serde/2.0.0"), Some("2.0.0".to_string()));
-        assert_eq!(extract_version_from_href("/crates/async-std/1.12.0"), Some("1.12.0".to_string()));
+        assert_eq!(
+            extract_version_from_href("/crate/tokio/1.35.0"),
+            Some("1.35.0".to_string())
+        );
+        assert_eq!(
+            extract_version_from_href("/serde/2.0.0"),
+            Some("2.0.0".to_string())
+        );
+        assert_eq!(
+            extract_version_from_href("/crates/async-std/1.12.0"),
+            Some("1.12.0".to_string())
+        );
 
         // Test no version found
         assert_eq!(extract_version_from_href("/crate/tokio/latest"), None);
@@ -1374,11 +1404,11 @@ mod tests {
         "#;
         let document = Html::parse_document(html);
         let selector = Selector::parse("a").unwrap();
-        
+
         if let Some(element) = document.select(&selector).next() {
             let release = extract_release_info_fallback(&element);
             assert!(release.is_some());
-            
+
             let release = release.unwrap();
             assert_eq!(release.name, "tokio");
             assert_eq!(release.version, "1.35.0");
@@ -1405,7 +1435,7 @@ mod tests {
         "#;
         let document = Html::parse_document(html);
         let releases = extract_releases_fallback(&document, 2).unwrap();
-        
+
         assert!(releases.len() <= 2);
         if !releases.is_empty() {
             let first_release = &releases[0];
