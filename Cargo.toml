@@ -49,6 +49,9 @@ url = { version = "2", features = ["serde"] }
 # Regular expressions
 regex = "1"
 
+# Configuration parsing
+toml = "0.8"
+
 # Async trait support
 async-trait = "0.1"
 

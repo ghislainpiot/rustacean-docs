@@ -1,7 +1,8 @@
 use crate::{
     client::DocsClient, 
     html_parser::HtmlParser,
-    error_handling::{build_docs_url, build_item_docs_url}
+    error_handling::{build_docs_url, build_item_docs_url},
+    config::{HtmlParsingConfig, ApiItemPatterns}
 };
 use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
@@ -329,7 +330,9 @@ fn parse_crate_documentation(
     crate_name: &str,
     version: &Option<String>,
 ) -> Result<CrateDocsResponse> {
-    let parser = HtmlParser::new(html);
+    let html_config = HtmlParsingConfig::default();
+    let api_patterns = ApiItemPatterns::default();
+    let parser = HtmlParser::with_config(html, html_config, api_patterns);
 
     // Extract version from page if not provided
     let actual_version = resolve_version(
@@ -374,7 +377,9 @@ fn parse_item_documentation(
     item_path: &str,
     version: &Option<String>,
 ) -> Result<ItemDocsResponse> {
-    let parser = HtmlParser::new(html);
+    let html_config = HtmlParsingConfig::default();
+    let api_patterns = ApiItemPatterns::default();
+    let parser = HtmlParser::with_config(html, html_config, api_patterns);
     let document = parser.document();
 
     // Extract item name from the page
@@ -575,13 +580,11 @@ fn categorize_items(items: &[CrateItem]) -> CrateCategories {
 
 /// Extract item name from documentation page
 fn extract_item_name(document: &Html, fallback: &str) -> String {
-    // Try to find item name in page title or main heading
-    let name_selectors = [
-        "h1.fqn .in-band",
-        "h1 .struct, h1 .trait, h1 .enum, h1 .fn",
-        "h1",
-        "title",
-    ];
+    let html_config = HtmlParsingConfig::default();
+    let name_selectors: Vec<&str> = html_config.item_name_selectors
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     for selector_str in &name_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
@@ -608,17 +611,11 @@ fn extract_item_name(document: &Html, fallback: &str) -> String {
 
 /// Extract item kind from documentation page
 fn extract_item_kind(document: &Html) -> ItemKind {
-    // Look for kind indicators in the page
-    let kind_selectors = [
-        "h1 .struct",
-        "h1 .trait",
-        "h1 .enum",
-        "h1 .fn",
-        "h1 .macro",
-        "h1 .constant",
-        "h1 .type",
-        "h1 .union",
-    ];
+    let html_config = HtmlParsingConfig::default();
+    let kind_selectors: Vec<&str> = html_config.item_kind_selectors
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     for selector_str in &kind_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
@@ -643,7 +640,11 @@ fn extract_item_kind(document: &Html) -> ItemKind {
 
 /// Extract item signature from documentation page
 fn extract_item_signature(document: &Html) -> Option<String> {
-    let signature_selectors = [".item-decl pre.rust", ".docblock.item-decl", ".signature"];
+    let html_config = HtmlParsingConfig::default();
+    let signature_selectors: Vec<&str> = html_config.signature_selectors
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     for selector_str in &signature_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
@@ -685,12 +686,11 @@ fn extract_item_description(document: &Html) -> Option<String> {
 fn extract_related_items(document: &Html) -> Vec<String> {
     let mut related = Vec::new();
 
-    // Look for implementation blocks and related links
-    let related_selectors = [
-        ".impl-items .method a",
-        ".trait-implementations a",
-        ".implementors a",
-    ];
+    let html_config = HtmlParsingConfig::default();
+    let related_selectors: Vec<&str> = html_config.related_items_selectors
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     for selector_str in &related_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
@@ -1438,22 +1438,22 @@ mod tests {
     #[test]
     fn test_is_api_item_href_edge_cases() {
         // Valid API item patterns
-        assert!(HtmlParser::is_api_item_href("trait.Serialize.html"));
-        assert!(HtmlParser::is_api_item_href("struct.HashMap.html"));
-        assert!(HtmlParser::is_api_item_href("de/index.html"));
+        assert!(HtmlParser::is_api_item_href_static("trait.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href_static("struct.HashMap.html"));
+        assert!(HtmlParser::is_api_item_href_static("de/index.html"));
 
         // Invalid patterns that should be filtered
-        assert!(!HtmlParser::is_api_item_href("javascript:void(0)"));
-        assert!(!HtmlParser::is_api_item_href("https://example.com"));
-        assert!(!HtmlParser::is_api_item_href("//external.com"));
-        assert!(!HtmlParser::is_api_item_href("#anchor"));
-        assert!(!HtmlParser::is_api_item_href("../parent/page.html"));
-        assert!(!HtmlParser::is_api_item_href(""));
+        assert!(!HtmlParser::is_api_item_href_static("javascript:void(0)"));
+        assert!(!HtmlParser::is_api_item_href_static("https://example.com"));
+        assert!(!HtmlParser::is_api_item_href_static("//external.com"));
+        assert!(!HtmlParser::is_api_item_href_static("#anchor"));
+        assert!(!HtmlParser::is_api_item_href_static("../parent/page.html"));
+        assert!(!HtmlParser::is_api_item_href_static(""));
 
         // Edge cases
-        assert!(!HtmlParser::is_api_item_href("all.html")); // "All Items" link
-        assert!(!HtmlParser::is_api_item_href("help.html")); // Help link
-        assert!(!HtmlParser::is_api_item_href("settings.html")); // Settings link
+        assert!(!HtmlParser::is_api_item_href_static("all.html")); // "All Items" link
+        assert!(!HtmlParser::is_api_item_href_static("help.html")); // Help link
+        assert!(!HtmlParser::is_api_item_href_static("settings.html")); // Settings link
     }
 
     #[test]
@@ -1514,7 +1514,7 @@ mod tests {
         assert_eq!(href, "trait.Valid.html");
         
         // Test that the link is correctly identified as an API item
-        assert!(HtmlParser::is_api_item_href(href));
+        assert!(HtmlParser::is_api_item_href_static(href));
     }
 
     #[test]
@@ -1735,26 +1735,26 @@ mod tests {
     #[test]
     fn test_is_api_item_href() {
         // Test valid API item hrefs
-        assert!(HtmlParser::is_api_item_href("trait.Serialize.html"));
-        assert!(HtmlParser::is_api_item_href("struct.HashMap.html"));
-        assert!(HtmlParser::is_api_item_href("enum.Option.html"));
-        assert!(HtmlParser::is_api_item_href("fn.println.html"));
-        assert!(HtmlParser::is_api_item_href("macro.vec.html"));
-        assert!(HtmlParser::is_api_item_href("derive.Serialize.html"));
-        assert!(HtmlParser::is_api_item_href("constant.PI.html"));
-        assert!(HtmlParser::is_api_item_href("type.Result.html"));
-        assert!(HtmlParser::is_api_item_href("union.MyUnion.html"));
-        assert!(HtmlParser::is_api_item_href("de/index.html"));
-        assert!(HtmlParser::is_api_item_href("ser/index.html"));
+        assert!(HtmlParser::is_api_item_href_static("trait.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href_static("struct.HashMap.html"));
+        assert!(HtmlParser::is_api_item_href_static("enum.Option.html"));
+        assert!(HtmlParser::is_api_item_href_static("fn.println.html"));
+        assert!(HtmlParser::is_api_item_href_static("macro.vec.html"));
+        assert!(HtmlParser::is_api_item_href_static("derive.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href_static("constant.PI.html"));
+        assert!(HtmlParser::is_api_item_href_static("type.Result.html"));
+        assert!(HtmlParser::is_api_item_href_static("union.MyUnion.html"));
+        assert!(HtmlParser::is_api_item_href_static("de/index.html"));
+        assert!(HtmlParser::is_api_item_href_static("ser/index.html"));
 
         // Test invalid hrefs
-        assert!(!HtmlParser::is_api_item_href("#data-formats")); // Documentation sections
-        assert!(!HtmlParser::is_api_item_href("#design"));
-        assert!(!HtmlParser::is_api_item_href("https://example.com"));
-        assert!(!HtmlParser::is_api_item_href("//external.com"));
-        assert!(!HtmlParser::is_api_item_href("../parent/page.html"));
-        assert!(!HtmlParser::is_api_item_href("javascript:void(0)"));
-        assert!(!HtmlParser::is_api_item_href(""));
-        assert!(!HtmlParser::is_api_item_href("just-text"));
+        assert!(!HtmlParser::is_api_item_href_static("#data-formats")); // Documentation sections
+        assert!(!HtmlParser::is_api_item_href_static("#design"));
+        assert!(!HtmlParser::is_api_item_href_static("https://example.com"));
+        assert!(!HtmlParser::is_api_item_href_static("//external.com"));
+        assert!(!HtmlParser::is_api_item_href_static("../parent/page.html"));
+        assert!(!HtmlParser::is_api_item_href_static("javascript:void(0)"));
+        assert!(!HtmlParser::is_api_item_href_static(""));
+        assert!(!HtmlParser::is_api_item_href_static("just-text"));
     }
 }

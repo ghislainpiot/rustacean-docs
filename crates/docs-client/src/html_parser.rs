@@ -1,3 +1,4 @@
+use crate::config::{HtmlParsingConfig, ApiItemPatterns};
 use rustacean_docs_core::models::docs::CodeExample;
 use scraper::{Html, Selector, ElementRef};
 use tracing::trace;
@@ -5,13 +6,22 @@ use tracing::trace;
 /// Centralized HTML parser utility for docs.rs content
 pub struct HtmlParser {
     document: Html,
+    html_config: HtmlParsingConfig,
+    api_patterns: ApiItemPatterns,
 }
 
 impl HtmlParser {
-    /// Create a new HTML parser from HTML content
+    /// Create a new HTML parser from HTML content with default configuration
     pub fn new(html: &str) -> Self {
+        Self::with_config(html, HtmlParsingConfig::default(), ApiItemPatterns::default())
+    }
+
+    /// Create a new HTML parser with custom configuration
+    pub fn with_config(html: &str, html_config: HtmlParsingConfig, api_patterns: ApiItemPatterns) -> Self {
         Self {
             document: Html::parse_document(html),
+            html_config,
+            api_patterns,
         }
     }
 
@@ -71,15 +81,12 @@ impl HtmlParser {
         element.value().attr("title").map(|s| s.to_string())
     }
 
-    /// Extract version from page using common patterns
+    /// Extract version from page using configured patterns
     pub fn extract_version(&self) -> Option<String> {
-        let version_selectors = [
-            ".version",
-            ".crate-version", 
-            "h1 .version",
-            ".nav-version",
-            "[data-version]",
-        ];
+        let version_selectors: Vec<&str> = self.html_config.version_selectors
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
 
         // Try direct version selectors first
         if let Some(version) = self.extract_text_by_selectors(&version_selectors) {
@@ -108,18 +115,9 @@ impl HtmlParser {
         None
     }
 
-    /// Extract description using common selectors
+    /// Extract description using configured selectors
     pub fn extract_description(&self) -> Option<String> {
-        let description_selectors = [
-            ".crate-description",
-            ".docblock p:first-child",
-            ".top-doc .docblock p:first-child",
-            "meta[name='description']",
-            ".description",
-            ".summary",
-        ];
-
-        for selector_str in &description_selectors {
+        for selector_str in &self.html_config.description_selectors {
             if let Ok(selector) = Selector::parse(selector_str) {
                 if let Some(element) = self.document.select(&selector).next() {
                     let text = if selector_str.starts_with("meta") {
@@ -142,18 +140,16 @@ impl HtmlParser {
     pub fn extract_api_links(&self) -> Vec<(String, String)> {
         let mut links = Vec::new();
         
-        let nav_selectors = [
-            "nav a[href]",
-            ".sidebar a[href]",
-            ".item-table dt a[href]",
-            ".docblock a[href]",
-        ];
+        let nav_selectors: Vec<&str> = self.html_config.navigation_selectors
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
 
         for element in self.extract_by_selectors(&nav_selectors) {
             if let Some(href) = Self::extract_href_from_element(&element) {
                 trace!(href = %href, "Found link in navigation");
                 
-                if Self::is_api_item_href(&href) {
+                if self.is_api_item_href(&href) {
                     if let Some(text) = Self::extract_text_from_element(&element) {
                         trace!(href = %href, text = %text, "Link matches API item pattern");
                         links.push((text, href));
@@ -165,36 +161,60 @@ impl HtmlParser {
         links
     }
 
-    /// Check if an href points to an actual API item
-    pub fn is_api_item_href(href: &str) -> bool {
+    /// Check if an href points to an actual API item using configured patterns
+    pub fn is_api_item_href(&self, href: &str) -> bool {
         // Skip external links, anchors, and non-API paths
         if href.starts_with("http") || href.starts_with("//") || href.starts_with('#') {
             return false;
         }
 
-        // API item patterns from docs.rs
-        href.contains("trait.") && href.ends_with(".html")
-            || href.contains("struct.") && href.ends_with(".html")
-            || href.contains("enum.") && href.ends_with(".html")
-            || href.contains("fn.") && href.ends_with(".html")
-            || href.contains("macro.") && href.ends_with(".html")
-            || href.contains("derive.") && href.ends_with(".html")
-            || href.contains("constant.") && href.ends_with(".html")
-            || href.contains("type.") && href.ends_with(".html")
-            || href.contains("union.") && href.ends_with(".html")
-            || (href.ends_with("/index.html") && !href.starts_with("../") && href != "index.html")
+        // Check against configured API item patterns
+        for pattern in &self.api_patterns.item_type_markers {
+            if href.contains(pattern) && href.ends_with(&self.api_patterns.html_extension) {
+                return true;
+            }
+        }
+
+        // Check for index files (modules)
+        if href.ends_with(&format!("/{}", self.api_patterns.index_file)) 
+            && !href.starts_with("../") 
+            && href != self.api_patterns.index_file {
+            return true;
+        }
+
+        false
     }
 
-    /// Extract code examples from the documentation
+    /// Static version for backward compatibility and external use
+    pub fn is_api_item_href_static(href: &str) -> bool {
+        let patterns = ApiItemPatterns::default();
+        
+        // Skip external links, anchors, and non-API paths
+        if href.starts_with("http") || href.starts_with("//") || href.starts_with('#') {
+            return false;
+        }
+
+        // Check against default API item patterns
+        for pattern in &patterns.item_type_markers {
+            if href.contains(pattern) && href.ends_with(&patterns.html_extension) {
+                return true;
+            }
+        }
+
+        // Check for index files (modules)
+        href.ends_with(&format!("/{}", patterns.index_file)) 
+            && !href.starts_with("../") 
+            && href != patterns.index_file
+    }
+
+    /// Extract code examples from the documentation using configured selectors
     pub fn extract_code_examples(&self) -> Vec<CodeExample> {
         let mut examples = Vec::new();
 
-        // Look for code blocks in the documentation
-        let code_selectors = [
-            "pre.rust code",
-            ".example-wrap pre code",
-            ".docblock pre.rust",
-        ];
+        let code_selectors: Vec<&str> = self.html_config.code_example_selectors
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
 
         for element in self.extract_by_selectors(&code_selectors) {
             if let Some(code_text) = Self::extract_text_from_element(&element) {
@@ -277,18 +297,18 @@ mod tests {
 
     #[test]
     fn test_is_api_item_href() {
-        assert!(HtmlParser::is_api_item_href("struct.Foo.html"));
-        assert!(HtmlParser::is_api_item_href("trait.Bar.html"));
-        assert!(HtmlParser::is_api_item_href("enum.Baz.html"));
-        assert!(HtmlParser::is_api_item_href("fn.function.html"));
-        assert!(HtmlParser::is_api_item_href("macro.my_macro.html"));
-        assert!(HtmlParser::is_api_item_href("module/index.html"));
+        assert!(HtmlParser::is_api_item_href_static("struct.Foo.html"));
+        assert!(HtmlParser::is_api_item_href_static("trait.Bar.html"));
+        assert!(HtmlParser::is_api_item_href_static("enum.Baz.html"));
+        assert!(HtmlParser::is_api_item_href_static("fn.function.html"));
+        assert!(HtmlParser::is_api_item_href_static("macro.my_macro.html"));
+        assert!(HtmlParser::is_api_item_href_static("module/index.html"));
         
-        assert!(!HtmlParser::is_api_item_href("https://external.com"));
-        assert!(!HtmlParser::is_api_item_href("//example.com"));
-        assert!(!HtmlParser::is_api_item_href("#anchor"));
-        assert!(!HtmlParser::is_api_item_href("../parent/index.html"));
-        assert!(!HtmlParser::is_api_item_href("index.html"));
+        assert!(!HtmlParser::is_api_item_href_static("https://external.com"));
+        assert!(!HtmlParser::is_api_item_href_static("//example.com"));
+        assert!(!HtmlParser::is_api_item_href_static("#anchor"));
+        assert!(!HtmlParser::is_api_item_href_static("../parent/index.html"));
+        assert!(!HtmlParser::is_api_item_href_static("index.html"));
     }
 
     #[test]
