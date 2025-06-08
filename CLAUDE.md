@@ -69,3 +69,53 @@ This is a new Rust project focused on documentation (based on the "rustacean-doc
 ## Memory Principles
 
 - Keep references to tasks or Claude Code out of the code and commit messages
+
+## Debugging MCP Tools
+
+The project includes a CLI tool (`rustacean-docs-cli`) for debugging MCP tools without the protocol overhead:
+
+### Building the CLI
+```bash
+cargo build --bin rustacean-docs-cli
+```
+
+### Common Debugging Commands
+
+```bash
+# List all available tools
+rustacean-docs-cli list
+
+# Test search functionality
+rustacean-docs-cli run search_crate '{"query": "serde", "limit": 3}'
+
+# Check cache performance
+rustacean-docs-cli run get_cache_stats '{}'
+
+# Clear cache if needed
+rustacean-docs-cli run clear_cache '{}'
+
+# Get tool parameter schema
+rustacean-docs-cli schema search_crate
+
+# Debug with verbose logging
+rustacean-docs-cli --log-level debug run get_crate_docs '{"crate_name": "tokio"}'
+
+# Export results as JSON for analysis
+rustacean-docs-cli --format json run list_recent_releases '{"limit": 10}' > releases.json
+```
+
+### Debugging Tips
+
+1. Use `--log-level debug` or `--log-level trace` to see detailed execution logs
+2. Use `--format json` to get structured output for programmatic analysis
+3. Run `get_cache_stats` regularly to monitor cache behavior and performance
+4. Use `clear_cache` if you suspect stale data issues
+5. Test with various parameter combinations to ensure robust error handling
+
+### Output Formats
+
+- `pretty` (default) - Human-readable formatted output
+- `json` - Compact JSON for programmatic processing
+- `raw` - Plain text output
+
+See `crates/mcp-server/CLI_USAGE.md` for comprehensive documentation.
