@@ -1375,6 +1375,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustacean-docs-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "rustacean-docs-cache",
+ "rustacean-docs-client",
+ "rustacean-docs-core",
+ "rustacean-docs-mcp-server",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-test",
+ "url",
+]
+
+[[package]]
 name = "rustacean-docs-mcp-server"
 version = "0.1.0"
 dependencies = [

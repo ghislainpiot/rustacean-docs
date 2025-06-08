@@ -4,6 +4,7 @@ members = [
     "crates/docs-client", 
     "crates/cache",
     "crates/mcp-server",
+    "crates/integration-tests",
 ]
 resolver = "2"
 
@@ -43,12 +44,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # URL parsing
 url = { version = "2", features = ["serde"] }
 
+# Async trait support
+async-trait = "0.1"
+
 # MCP protocol - using a placeholder since real mcp-sdk may not exist yet
 # mcp-sdk = { version = "0.1", features = ["server"] }
-
-[workspace.dev-dependencies]
-tokio-test = "0.4"
-mockito = "1.2"
-tempfile = "3.8"
-criterion = "0.5"
-tarpaulin = "0.27"
