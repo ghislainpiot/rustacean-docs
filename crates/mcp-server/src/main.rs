@@ -1,8 +1,7 @@
 use anyhow::Result;
 
 use rust_mcp_sdk::{
-    schema::{Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools},
-    mcp_server::hyper_server, mcp_server::HyperServerOptions
+    mcp_server::{hyper_server, HyperServerOptions}, schema::{Implementation, InitializeResult, ServerCapabilities, ServerCapabilitiesTools, LATEST_PROTOCOL_VERSION}
 };
 
 use rustacean_docs_mcp_server::{Config, RustaceanDocsHandler};
@@ -30,7 +29,7 @@ async fn main() -> Result<()> {
         },
         instructions: Some("MCP server for accessing Rust documentation from docs.rs".to_string()),
         meta: None,
-        protocol_version: "2024-11-05".to_string(),
+        protocol_version: LATEST_PROTOCOL_VERSION.into(),
     };
 
     // // Create stdio transport

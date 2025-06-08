@@ -129,8 +129,6 @@ impl RustaceanDocsHandler {
     }
 
     async fn execute_tool(&self, tool_name: &str, params: Value) -> Result<Value> {
-        debug!("Executing tool: {} with params: {}", tool_name, params);
-
         let result = match tool_name {
             "search_crate" => {
                 SearchTool::new().execute(params, &self.client, &self.cache).await
@@ -189,13 +187,19 @@ impl ServerHandler for RustaceanDocsHandler {
         request: CallToolRequest,
         _runtime: &dyn McpServer,
     ) -> Result<CallToolResult, CallToolError> {
-        debug!("Handling call_tool request for: {}", request.tool_name());
+        debug!("Handling call_tool request for: {}", request.params.name);
 
-        let params = serde_json::to_value(&request.params).unwrap_or_default();
+        // Extract the actual tool arguments from the request
+        let params = match &request.params.arguments {
+            Some(args_map) => serde_json::Value::Object(args_map.clone()),
+            None => serde_json::Value::Object(serde_json::Map::new()),
+        };
         
-        match self.execute_tool(request.tool_name(), params).await {
+        debug!("Executing tool: {} with params: {}", request.params.name, params);
+        
+        match self.execute_tool(&request.params.name, params).await {
             Ok(result) => {
-                debug!("Tool execution successful for: {}", request.tool_name());
+                debug!("Tool execution successful for: {}", request.params.name);
                 Ok(CallToolResult::text_content(
                     serde_json::to_string_pretty(&result).map_err(|e| {
                         error!("Failed to serialize tool result: {}", e);
@@ -205,7 +209,7 @@ impl ServerHandler for RustaceanDocsHandler {
                 ))
             }
             Err(e) => {
-                error!("Tool execution failed for {}: {}", request.tool_name(), e);
+                error!("Tool execution failed for {}: {}", request.params.name, e);
                 Err(CallToolError::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Tool execution error: {}", e))))
             }
         }
