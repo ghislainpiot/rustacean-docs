@@ -65,3 +65,7 @@ This is a new Rust project focused on documentation (based on the "rustacean-doc
   - Run all tests with coverage
   - Ensure coverage of your feature is good enough
   - Run formatting and clippy to clean the code
+
+## Memory Principles
+
+- Keep references to tasks or Claude Code out of the code and commit messages

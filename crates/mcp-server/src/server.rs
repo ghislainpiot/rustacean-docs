@@ -97,6 +97,9 @@ impl McpServer {
             Box::new(crate::tools::CrateDocsTool::new()),
         )?;
 
+        // Register the item docs tool
+        self.register_tool("get_item_docs", Box::new(crate::tools::ItemDocsTool::new()))?;
+
         info!("Registered {} tools", self.tools.len());
         Ok(())
     }
