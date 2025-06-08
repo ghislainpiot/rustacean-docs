@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::debug;
 
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{DocsClient, MetadataService};
@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -59,6 +59,12 @@ pub struct CrateMetadataTool;
 impl CrateMetadataTool {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Format metadata response (static version for use in closures)
+    fn format_metadata_response_static(metadata: &CrateMetadata) -> Value {
+        let tool = CrateMetadataTool::new();
+        tool.format_metadata_response(metadata)
     }
 }
 
@@ -240,48 +246,55 @@ impl ToolHandler for CrateMetadataTool {
     async fn execute(
         &self,
         params: Value,
-        _client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<ServerCache>>,
+        client: &Arc<DocsClient>,
+        cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         debug!("Executing get_crate_metadata tool with params: {}", params);
 
-        // Parse and validate input
-        let input: MetadataToolInput = serde_json::from_value(params)
+        // Parse input parameters
+        let input: MetadataToolInput = serde_json::from_value(params.clone())
             .with_context(|| "Invalid input parameters for get_crate_metadata".to_string())?;
-
-        input.validate()?;
-
-        trace!("Validated input for crate: {}", input.crate_name);
-
-        // Convert to request
-        let request = input.to_request();
 
         debug!(
             "Fetching metadata for crate: {} (version: {:?})",
-            request.crate_name, request.version
+            input.crate_name, input.version
         );
 
-        // Create metadata service and fetch real data
-        // Note: We create a new client since MetadataService takes ownership
-        let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
-        let metadata_service = MetadataService::new(new_client);
-        
-        match metadata_service.get_crate_metadata(&request).await {
-            Ok(metadata) => {
-                let formatted_response = self.format_metadata_response(&metadata);
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "metadata",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, _client| async move {
+                // Convert to request
+                let request = input.to_request();
+
+                // Create metadata service and fetch real data
+                // Note: We create a new client since MetadataService takes ownership
+                let new_client = DocsClient::new().map_err(|e| anyhow::anyhow!("Failed to create client: {}", e))?;
+                let metadata_service = MetadataService::new(new_client);
                 
-                Ok(json!({
-                    "status": "success",
-                    "crate_name": request.crate_name,
-                    "version": request.version.unwrap_or_else(|| "latest".to_string()),
-                    "metadata": formatted_response
-                }))
-            }
-            Err(e) => {
-                debug!("Failed to fetch metadata: {}", e);
-                Err(anyhow::anyhow!("Failed to fetch metadata: {}", e))
-            }
-        }
+                match metadata_service.get_crate_metadata(&request).await {
+                    Ok(metadata) => {
+                        let formatted_response = CrateMetadataTool::format_metadata_response_static(&metadata);
+                        
+                        Ok(json!({
+                            "status": "success",
+                            "crate_name": request.crate_name,
+                            "version": request.version.unwrap_or_else(|| "latest".to_string()),
+                            "metadata": formatted_response
+                        }))
+                    }
+                    Err(e) => {
+                        debug!("Failed to fetch metadata: {}", e);
+                        Err(anyhow::anyhow!("Failed to fetch metadata: {}", e))
+                    }
+                }
+            },
+        ).await
     }
 
     fn description(&self) -> &str {

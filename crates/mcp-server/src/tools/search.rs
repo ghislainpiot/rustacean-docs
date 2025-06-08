@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -95,10 +95,9 @@ impl ToolHandler for SearchTool {
     ) -> Result<Value> {
         trace!("Executing search tool with params: {}", params);
 
-        // Parse and validate input parameters
+        // Parse input parameters
         let input: SearchToolInput =
-            serde_json::from_value(params).context("Invalid search tool input parameters")?;
-        input.validate()?;
+            serde_json::from_value(params.clone()).context("Invalid search tool input parameters")?;
 
         debug!(
             query = %input.query,
@@ -106,61 +105,34 @@ impl ToolHandler for SearchTool {
             "Processing search request"
         );
 
-        let cache_key = input.cache_key("search");
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "search",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Fetch from API
+                let search_request = input.to_search_request();
+                let search_response = client
+                    .search_crates(search_request)
+                    .await
+                    .with_context(|| format!("Failed to search for crates with query: {}", input.query))?;
 
-        // Try to get from cache first
-        {
-            let cache_guard = cache.read().await;
-            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
-                trace!(
+                debug!(
                     query = %input.query,
-                    cache_key = %cache_key,
-                    "Search cache hit"
+                    total_results = search_response.total.unwrap_or(0),
+                    returned_results = search_response.results.len(),
+                    "Search completed successfully"
                 );
-                return Ok(cached_result);
-            }
-        }
 
-        trace!(
-            query = %input.query,
-            cache_key = %cache_key,
-            "Search cache miss, fetching from API"
-        );
-
-        // Cache miss - fetch from API
-        let search_request = input.to_search_request();
-        let search_response = client
-            .search_crates(search_request)
-            .await
-            .with_context(|| format!("Failed to search for crates with query: {}", input.query))?;
-
-        debug!(
-            query = %input.query,
-            total_results = search_response.total.unwrap_or(0),
-            returned_results = search_response.results.len(),
-            "Search completed successfully"
-        );
-
-        // Transform response to JSON
-        let json_response = Self::response_to_json(search_response);
-
-        // Store in cache for future requests
-        {
-            let cache_guard = cache.read().await;
-            if let Err(e) = cache_guard
-                .insert(cache_key.clone(), json_response.clone())
-                .await
-            {
-                debug!("Failed to cache search result: {}", e);
-            }
-        }
-
-        trace!(
-            cache_key = %cache_key,
-            "Search result cached"
-        );
-
-        Ok(json_response)
+                // Transform response to JSON
+                let json_response = Self::response_to_json(search_response);
+                Ok(json_response)
+            },
+        ).await
     }
 
     fn description(&self) -> &str {

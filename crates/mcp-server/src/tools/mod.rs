@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{debug, trace};
 
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
@@ -22,6 +23,7 @@ pub use item_docs::ItemDocsTool;
 pub use metadata::CrateMetadataTool;
 pub use releases::RecentReleasesTool;
 pub use search::SearchTool;
+
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -100,6 +102,142 @@ impl ParameterValidator {
             }
         }
         Ok(())
+    }
+}
+
+/// Cache configuration for tools
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// Whether caching is enabled for this tool
+    pub enabled: bool,
+    /// Custom cache key prefix (defaults to tool name)
+    pub key_prefix: Option<String>,
+    /// Whether to cache responses even on errors (usually false)
+    pub cache_errors: bool,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            key_prefix: None,
+            cache_errors: false,
+        }
+    }
+}
+
+impl CacheConfig {
+    /// Create cache config with caching disabled
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            key_prefix: None,
+            cache_errors: false,
+        }
+    }
+
+    /// Create cache config with custom key prefix
+    pub fn with_prefix(prefix: impl Into<String>) -> Self {
+        Self {
+            enabled: true,
+            key_prefix: Some(prefix.into()),
+            cache_errors: false,
+        }
+    }
+}
+
+/// Unified cache execution strategy for tools
+pub struct CacheStrategy;
+
+impl CacheStrategy {
+    /// Execute a tool with unified caching strategy
+    pub async fn execute_with_cache<F, Fut, I>(
+        tool_name: &str,
+        _params: Value,
+        input: I,
+        cache_config: CacheConfig,
+        client: &Arc<DocsClient>,
+        cache: &Arc<RwLock<ServerCache>>,
+        operation: F,
+    ) -> Result<Value>
+    where
+        F: FnOnce(I, Arc<DocsClient>) -> Fut + Send,
+        Fut: std::future::Future<Output = Result<Value>> + Send,
+        I: ToolInput,
+    {
+        // Validate input
+        input.validate()?;
+
+        // Skip cache if disabled
+        if !cache_config.enabled {
+            trace!(tool = tool_name, "Cache disabled, executing directly");
+            return operation(input, client.clone()).await;
+        }
+
+        let cache_key = if let Some(prefix) = &cache_config.key_prefix {
+            input.cache_key(prefix)
+        } else {
+            input.cache_key(tool_name)
+        };
+
+        // Try to get from cache first
+        {
+            let cache_guard = cache.read().await;
+            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
+                trace!(
+                    tool = tool_name,
+                    cache_key = %cache_key,
+                    "Cache hit"
+                );
+                return Ok(cached_result);
+            }
+        }
+
+        trace!(
+            tool = tool_name,
+            cache_key = %cache_key,
+            "Cache miss, executing operation"
+        );
+
+        // Cache miss - execute operation
+        let result = operation(input, client.clone()).await;
+
+        // Store in cache if successful (or if cache_errors is enabled)
+        match &result {
+            Ok(response) => {
+                let cache_guard = cache.read().await;
+                if let Err(e) = cache_guard
+                    .insert(cache_key.clone(), response.clone())
+                    .await
+                {
+                    debug!(
+                        tool = tool_name,
+                        cache_key = %cache_key,
+                        error = %e,
+                        "Failed to cache result"
+                    );
+                }
+                trace!(
+                    tool = tool_name,
+                    cache_key = %cache_key,
+                    "Result cached"
+                );
+            }
+            Err(e) if cache_config.cache_errors => {
+                // Optionally cache errors as well (usually not desired)
+                debug!(
+                    tool = tool_name,
+                    cache_key = %cache_key,
+                    error = %e,
+                    "Caching error result"
+                );
+            }
+            Err(_) => {
+                // Don't cache errors by default
+            }
+        }
+
+        result
     }
 }
 

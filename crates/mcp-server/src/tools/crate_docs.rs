@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -119,10 +119,9 @@ impl ToolHandler for CrateDocsTool {
     ) -> Result<Value> {
         trace!("Executing crate docs tool with params: {}", params);
 
-        // Parse and validate input parameters
+        // Parse input parameters
         let input: CrateDocsToolInput =
-            serde_json::from_value(params).context("Invalid crate docs tool input parameters")?;
-        input.validate()?;
+            serde_json::from_value(params.clone()).context("Invalid crate docs tool input parameters")?;
 
         debug!(
             crate_name = %input.crate_name,
@@ -130,66 +129,37 @@ impl ToolHandler for CrateDocsTool {
             "Processing crate docs request"
         );
 
-        let cache_key = input.cache_key("crate_docs");
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "crate_docs",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Fetch from docs.rs
+                let docs_request = input.to_crate_docs_request();
+                let docs_response = client.get_crate_docs(docs_request).await.with_context(|| {
+                    format!(
+                        "Failed to fetch documentation for crate: {} version: {:?}",
+                        input.crate_name, input.version
+                    )
+                })?;
 
-        // Try to get from cache first
-        {
-            let cache_guard = cache.read().await;
-            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
-                trace!(
-                    crate_name = %input.crate_name,
-                    version = ?input.version,
-                    cache_key = %cache_key,
-                    "Crate docs cache hit"
+                debug!(
+                    crate_name = %docs_response.name,
+                    version = %docs_response.version,
+                    item_count = docs_response.items.len(),
+                    example_count = docs_response.examples.len(),
+                    "Crate documentation fetched successfully"
                 );
-                return Ok(cached_result);
-            }
-        }
 
-        trace!(
-            crate_name = %input.crate_name,
-            version = ?input.version,
-            cache_key = %cache_key,
-            "Crate docs cache miss, fetching from docs.rs"
-        );
-
-        // Cache miss - fetch from docs.rs
-        let docs_request = input.to_crate_docs_request();
-        let docs_response = client.get_crate_docs(docs_request).await.with_context(|| {
-            format!(
-                "Failed to fetch documentation for crate: {} version: {:?}",
-                input.crate_name, input.version
-            )
-        })?;
-
-        debug!(
-            crate_name = %docs_response.name,
-            version = %docs_response.version,
-            item_count = docs_response.items.len(),
-            example_count = docs_response.examples.len(),
-            "Crate documentation fetched successfully"
-        );
-
-        // Transform response to JSON
-        let json_response = Self::response_to_json(docs_response);
-
-        // Store in cache for future requests
-        {
-            let cache_guard = cache.read().await;
-            if let Err(e) = cache_guard
-                .insert(cache_key.clone(), json_response.clone())
-                .await
-            {
-                debug!("Failed to cache crate docs result: {}", e);
-            }
-        }
-
-        trace!(
-            cache_key = %cache_key,
-            "Crate docs result cached"
-        );
-
-        Ok(json_response)
+                // Transform response to JSON
+                let json_response = Self::response_to_json(docs_response);
+                Ok(json_response)
+            },
+        ).await
     }
 
     fn description(&self) -> &str {
