@@ -27,21 +27,27 @@ async fn create_realistic_test_environment() -> (DocsClient, Arc<RwLock<ServerCa
 
 /// Helper to create comprehensive mock responses
 fn create_comprehensive_mock_response(crate_name: &str, result_count: usize) -> Value {
-    let results: Vec<Value> = (0..result_count).map(|i| {
-        let name = if i == 0 { crate_name.to_string() } else { format!("{}-{}", crate_name, i) };
-        json!({
-            "name": name.clone(),
-            "version": format!("1.{}.0", i),
-            "description": format!("Description for {} variant {}", crate_name, i),
-            "docs_url": format!("https://docs.rs/{}", name),
-            "download_count": 1000000 - (i * 10000),
-            "last_updated": "2023-01-01T00:00:00Z",
-            "repository": format!("https://github.com/rust-lang/{}", name),
-            "homepage": format!("https://{}.rs", name),
-            "keywords": ["async", "network", "io"],
-            "categories": ["network-programming", "asynchronous"]
+    let results: Vec<Value> = (0..result_count)
+        .map(|i| {
+            let name = if i == 0 {
+                crate_name.to_string()
+            } else {
+                format!("{}-{}", crate_name, i)
+            };
+            json!({
+                "name": name.clone(),
+                "version": format!("1.{}.0", i),
+                "description": format!("Description for {} variant {}", crate_name, i),
+                "docs_url": format!("https://docs.rs/{}", name),
+                "download_count": 1000000 - (i * 10000),
+                "last_updated": "2023-01-01T00:00:00Z",
+                "repository": format!("https://github.com/rust-lang/{}", name),
+                "homepage": format!("https://{}.rs", name),
+                "keywords": ["async", "network", "io"],
+                "categories": ["network-programming", "asynchronous"]
+            })
         })
-    }).collect();
+        .collect();
 
     json!({
         "results": results,
