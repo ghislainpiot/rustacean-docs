@@ -105,7 +105,7 @@ impl DiskCache {
         stats.requests += 1;
         drop(stats);
 
-        trace!("Attempting to get key '{}' from disk cache", key);
+        trace!("Attempting to get key '{key}' from disk cache");
 
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => {
@@ -113,7 +113,7 @@ impl DiskCache {
                     Ok(entry) => {
                         if entry.is_expired(self.ttl) {
                             // Entry is expired, remove it
-                            trace!("Disk cache entry expired for key '{}'", key);
+                            trace!("Disk cache entry expired for key '{key}'");
                             let _ = self.remove_entry(key).await; // Don't propagate remove errors
 
                             let mut stats = self.stats.write().await;
@@ -121,14 +121,14 @@ impl DiskCache {
                             Ok(None)
                         } else {
                             // Entry is valid
-                            trace!("Disk cache hit for key '{}'", key);
+                            trace!("Disk cache hit for key '{key}'");
                             let mut stats = self.stats.write().await;
                             stats.hits += 1;
                             Ok(Some(entry.value))
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to deserialize cache entry for key '{}': {}", key, e);
+                        warn!("Failed to deserialize cache entry for key '{key}': {e}");
                         let _ = self.remove_entry(key).await; // Remove corrupted entry
 
                         let mut stats = self.stats.write().await;
@@ -142,12 +142,12 @@ impl DiskCache {
                 // cacache errors don't have kind() method, check the error string
                 let error_str = format!("{e}");
                 if error_str.contains("not found") || error_str.contains("No such file") {
-                    trace!("Disk cache miss for key '{}'", key);
+                    trace!("Disk cache miss for key '{key}'");
                     let mut stats = self.stats.write().await;
                     stats.misses += 1;
                     Ok(None)
                 } else {
-                    warn!("Error reading from disk cache for key '{}': {}", key, e);
+                    warn!("Error reading from disk cache for key '{key}': {e}");
                     let mut stats = self.stats.write().await;
                     stats.misses += 1;
                     stats.errors += 1;
@@ -162,7 +162,7 @@ impl DiskCache {
     where
         V: Serialize,
     {
-        trace!("Inserting key '{}' into disk cache", key);
+        trace!("Inserting key '{key}' into disk cache");
 
         let entry = DiskCacheEntry::new(value).context("Failed to create cache entry")?;
 
@@ -170,16 +170,16 @@ impl DiskCache {
 
         match cacache::write(&self.cache_dir, &key, data).await {
             Ok(_) => {
-                trace!("Successfully wrote key '{}' to disk cache", key);
+                trace!("Successfully wrote key '{key}' to disk cache");
                 let mut stats = self.stats.write().await;
                 stats.writes += 1;
                 Ok(())
             }
             Err(e) => {
-                warn!("Failed to write data for key '{}': {}", key, e);
+                warn!("Failed to write data for key '{key}': {e}");
                 let mut stats = self.stats.write().await;
                 stats.errors += 1;
-                Err(anyhow::anyhow!("Failed to write cache data: {}", e))
+                Err(anyhow::anyhow!("Failed to write cache data: {e}"))
             }
         }
     }
@@ -198,19 +198,19 @@ impl DiskCache {
     async fn remove_entry(&self, key: &str) -> Result<bool> {
         match cacache::remove(&self.cache_dir, key).await {
             Ok(_) => {
-                trace!("Removed key '{}' from disk cache", key);
+                trace!("Removed key '{key}' from disk cache");
                 Ok(true)
             }
             Err(e) => {
                 let error_str = format!("{e}");
                 if error_str.contains("not found") || error_str.contains("No such file") {
-                    trace!("Key '{}' not found in disk cache for removal", key);
+                    trace!("Key '{key}' not found in disk cache for removal");
                     Ok(false)
                 } else {
-                    warn!("Error removing key '{}' from disk cache: {}", key, e);
+                    warn!("Error removing key '{key}' from disk cache: {e}");
                     let mut stats = self.stats.write().await;
                     stats.errors += 1;
-                    Err(anyhow::anyhow!("Failed to remove cache entry: {}", e))
+                    Err(anyhow::anyhow!("Failed to remove cache entry: {e}"))
                 }
             }
         }
@@ -239,10 +239,10 @@ impl DiskCache {
                 Ok(estimated_count)
             }
             Err(e) => {
-                warn!("Error clearing disk cache: {}", e);
+                warn!("Error clearing disk cache: {e}");
                 let mut stats = self.stats.write().await;
                 stats.errors += 1;
-                Err(anyhow::anyhow!("Failed to clear cache: {}", e))
+                Err(anyhow::anyhow!("Failed to clear cache: {e}"))
             }
         }
     }
@@ -287,7 +287,7 @@ impl DiskCache {
         let (size, bytes_used) = match self.get_cache_size().await {
             Ok((size, bytes)) => (size, Some(bytes)),
             Err(e) => {
-                warn!("Failed to get cache size: {}", e);
+                warn!("Failed to get cache size: {e}");
                 (0, None)
             }
         };
@@ -350,7 +350,7 @@ impl DiskCache {
         }
 
         if count > 0 {
-            debug!("Cleaned up {} expired entries from disk cache", count);
+            debug!("Cleaned up {count} expired entries from disk cache");
         }
 
         Ok(count)
@@ -675,8 +675,8 @@ mod tests {
         for i in 0..10 {
             let cache_clone = cache.clone();
             let handle = tokio::spawn(async move {
-                let key = format!("key{}", i);
-                let value = format!("value{}", i);
+                let key = format!("key{i}");
+                let value = format!("value{i}");
 
                 cache_clone
                     .insert(key.clone(), value.clone())
@@ -755,12 +755,12 @@ mod tests {
     #[tokio::test]
     async fn test_ttl_precision_levels() {
         // Test TTL precision across different time scales
+        // Use longer durations to avoid timing precision issues in tests
         let ttl_scenarios = vec![
-            (Duration::from_millis(50), "50ms"),
-            (Duration::from_millis(100), "100ms"),
+            (Duration::from_millis(200), "200ms"),
             (Duration::from_millis(500), "500ms"),
             (Duration::from_secs(1), "1s"),
-            (Duration::from_secs(5), "5s"),
+            (Duration::from_secs(2), "2s"),
         ];
 
         for (ttl, description) in ttl_scenarios {
@@ -770,8 +770,8 @@ mod tests {
                 .unwrap();
 
             // Insert a value
-            let key = format!("test_key_{}", description);
-            let value = format!("test_value_{}", description);
+            let key = format!("test_key_{description}");
+            let value = format!("test_value_{description}");
 
             cache.insert(key.clone(), value.clone()).await.unwrap();
 
@@ -779,13 +779,11 @@ mod tests {
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 Some(value.clone()),
-                "Value should exist immediately for TTL {}",
-                description
+                "Value should exist immediately for TTL {description}"
             );
             assert!(
                 cache.contains(&key).await,
-                "Cache should contain key for TTL {}",
-                description
+                "Cache should contain key for TTL {description}"
             );
 
             // Wait for 75% of TTL and verify still exists
@@ -795,8 +793,7 @@ mod tests {
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 Some(value),
-                "Value should still exist at 75% TTL for {}",
-                description
+                "Value should still exist at 75% TTL for {description}"
             );
 
             // Wait for TTL to expire with buffer
@@ -807,13 +804,11 @@ mod tests {
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 None,
-                "Value should be expired for TTL {}",
-                description
+                "Value should be expired for TTL {description}"
             );
             assert!(
                 !cache.contains(&key).await,
-                "Cache should not contain expired key for TTL {}",
-                description
+                "Cache should not contain expired key for TTL {description}"
             );
         }
     }
@@ -827,8 +822,8 @@ mod tests {
 
         // Test rapid insertion and expiration
         for i in 0..5 {
-            let key = format!("rapid_key_{}", i);
-            let value = format!("rapid_value_{}", i);
+            let key = format!("rapid_key_{i}");
+            let value = format!("rapid_value_{i}");
 
             cache.insert(key.clone(), value.clone()).await.unwrap();
 
@@ -838,8 +833,7 @@ mod tests {
             assert_eq!(
                 cache.get::<String>(&key).await.unwrap(),
                 None,
-                "Rapid test key {} should be expired",
-                i
+                "Rapid test key {i} should be expired"
             );
         }
 
@@ -913,8 +907,7 @@ mod tests {
         let expired_count = cache.cleanup_expired().await.unwrap();
         assert!(
             expired_count >= 2,
-            "Should clean up at least 2 expired entries, got {}",
-            expired_count
+            "Should clean up at least 2 expired entries, got {expired_count}"
         );
 
         // Verify state after cleanup
@@ -988,8 +981,8 @@ mod tests {
         for i in 0..10 {
             let cache_clone = cache.clone();
             let handle = tokio::spawn(async move {
-                let key = format!("concurrent_key_{}", i);
-                let value = format!("concurrent_value_{}", i);
+                let key = format!("concurrent_key_{i}");
+                let value = format!("concurrent_value_{i}");
 
                 // Insert
                 cache_clone

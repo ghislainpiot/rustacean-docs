@@ -78,12 +78,12 @@ where
 
             match self.run_maintenance().await {
                 Ok(report) => {
-                    debug!("Maintenance completed successfully: {:?}", report);
+                    debug!("Maintenance completed successfully: {report:?}");
                     self.failure_count = 0; // Reset failure count on success
                 }
                 Err(e) => {
                     self.failure_count += 1;
-                    error!("Maintenance failed (attempt {}): {}", self.failure_count, e);
+                    error!("Maintenance failed (attempt {}): {e}", self.failure_count);
 
                     if self.failure_count >= self.config.max_failures {
                         warn!(
@@ -146,7 +146,7 @@ where
 
     /// Update configuration
     pub fn update_config(&mut self, config: MaintenanceConfig) {
-        info!("Updating maintenance configuration: {:?}", config);
+        info!("Updating maintenance configuration: {config:?}");
 
         // Update interval if it changed
         if config.interval != self.config.interval {
@@ -193,7 +193,7 @@ where
     pub async fn run_maintenance(&self) -> Result<MaintenanceReport> {
         info!("Running manual cache maintenance");
         let report = self.cache.maintenance().await?;
-        info!("Maintenance completed: {:?}", report);
+        info!("Maintenance completed: {report:?}");
         Ok(report)
     }
 
@@ -212,7 +212,7 @@ where
     pub async fn enforce_size_limits(&self) -> Result<usize> {
         info!("Enforcing cache size limits");
         let result = self.cache.enforce_size_limits().await?;
-        info!("Size enforcement removed {} entries", result);
+        info!("Size enforcement removed {result} entries");
         Ok(result)
     }
 
@@ -495,14 +495,14 @@ mod tests {
         // Add some data and check again
         for i in 0..5 {
             cache
-                .insert(format!("key{}", i), format!("value{}", i))
+                .insert(format!("key{i}"), format!("value{i}"))
                 .await
                 .unwrap();
         }
 
         // Generate some cache hits
         for i in 0..5 {
-            let _ = cache.get(&format!("key{}", i)).await.unwrap();
+            let _ = cache.get(&format!("key{i}")).await.unwrap();
         }
 
         let health = manager.health_check().await.unwrap();

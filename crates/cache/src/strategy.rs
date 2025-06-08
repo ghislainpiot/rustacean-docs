@@ -80,11 +80,11 @@ where
             stats.total_requests += 1;
         }
 
-        trace!("Getting key '{}' from tiered cache", key_str);
+        trace!("Getting key '{key_str}' from tiered cache");
 
         // First, try memory cache
         if let Some(value) = self.memory.get(key).await {
-            trace!("Memory cache hit for key '{}'", key_str);
+            trace!("Memory cache hit for key '{key_str}'");
 
             // Update combined stats
             {
@@ -97,14 +97,11 @@ where
             return Ok(Some(value));
         }
 
-        trace!(
-            "Memory cache miss for key '{}', checking disk cache",
-            key_str
-        );
+        trace!("Memory cache miss for key '{key_str}', checking disk cache");
 
         // Memory miss, try disk cache
         if let Some(value) = self.disk.get::<V>(&key_str).await? {
-            trace!("Disk cache hit for key '{}', promoting to memory", key_str);
+            trace!("Disk cache hit for key '{key_str}', promoting to memory");
 
             // Promote to memory cache (don't wait for this)
             let _ = self.memory.insert(key.clone(), value.clone()).await;
@@ -120,7 +117,7 @@ where
             return Ok(Some(value));
         }
 
-        trace!("Complete cache miss for key '{}'", key_str);
+        trace!("Complete cache miss for key '{key_str}'");
 
         // Complete miss
         {
@@ -136,7 +133,7 @@ where
     /// Insert a value into both memory and disk caches (write-through)
     pub async fn insert(&self, key: K, value: V) -> Result<()> {
         let key_str = key.to_string();
-        trace!("Inserting key '{}' into tiered cache", key_str);
+        trace!("Inserting key '{key_str}' into tiered cache");
 
         // Write to both caches concurrently
         let memory_result = self.memory.insert(key, value.clone());
@@ -152,7 +149,7 @@ where
     /// Remove a key from both caches
     pub async fn remove(&self, key: &K) -> Result<bool> {
         let key_str = key.to_string();
-        trace!("Removing key '{}' from tiered cache", key_str);
+        trace!("Removing key '{key_str}' from tiered cache");
 
         // Remove from both caches concurrently
         let memory_result = self.memory.remove(key);
@@ -260,7 +257,7 @@ where
             size_enforced,
         };
 
-        debug!("Maintenance completed: {:?}", report);
+        debug!("Maintenance completed: {report:?}");
         Ok(report)
     }
 }
@@ -500,8 +497,8 @@ mod tests {
         for i in 0..10 {
             let cache_clone = cache.clone();
             let handle = tokio::spawn(async move {
-                let key = format!("key{}", i);
-                let value = format!("value{}", i);
+                let key = format!("key{i}");
+                let value = format!("value{i}");
 
                 cache_clone
                     .insert(key.clone(), value.clone())
@@ -519,8 +516,8 @@ mod tests {
 
         // Verify all values are accessible
         for i in 0..10 {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
+            let key = format!("key{i}");
+            let value = format!("value{i}");
             assert_eq!(cache.get(&key).await.unwrap(), Some(value));
         }
     }

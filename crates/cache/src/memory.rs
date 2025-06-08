@@ -130,7 +130,7 @@ where
         let count = cache.len();
         cache.clear();
 
-        debug!("Cleared {} items from memory cache", count);
+        debug!("Cleared {count} items from memory cache");
         count
     }
 
@@ -197,7 +197,7 @@ where
         stats.expirations += count as u64;
 
         if count > 0 {
-            debug!("Cleaned up {} expired entries from memory cache", count);
+            debug!("Cleaned up {count} expired entries from memory cache");
         }
 
         count
@@ -467,8 +467,8 @@ mod tests {
         for i in 0..10 {
             let cache_clone = cache.clone();
             let handle = tokio::spawn(async move {
-                let key = format!("key{}", i);
-                let value = format!("value{}", i);
+                let key = format!("key{i}");
+                let value = format!("value{i}");
 
                 cache_clone.insert(key.clone(), value.clone()).await;
                 assert_eq!(cache_clone.get(&key).await, Some(value));
