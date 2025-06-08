@@ -3,17 +3,14 @@
 //! These tests verify cache hit/miss scenarios, TTL behavior, and
 //! integration between different components using the cache.
 
-use chrono::Utc;
 use rustacean_docs_cache::MemoryCache;
 use rustacean_docs_client::DocsClient;
-use rustacean_docs_core::models::search::{CrateSearchResult, SearchRequest, SearchResponse};
 use rustacean_docs_mcp_server::tools::{search::SearchTool, ToolHandler};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use url::Url;
 
 type ServerCache = MemoryCache<String, Value>;
 
@@ -169,7 +166,7 @@ async fn test_cache_key_uniqueness() {
         ("search:test1:10", json!({"query": "test1", "limit": 10})),
         ("search:test1:20", json!({"query": "test1", "limit": 20})),
         ("search:test2:10", json!({"query": "test2", "limit": 10})),
-        ("search:test3", json!({"query": "test3"})), // No limit specified
+        ("search:test3:10", json!({"query": "test3"})), // No limit specified, defaults to 10
     ];
 
     // Pre-populate cache with unique responses for each key
@@ -209,9 +206,8 @@ async fn test_cache_key_uniqueness() {
 
 #[tokio::test]
 async fn test_cache_ttl_expiration() {
-    let (client, cache) = create_cache_test_environment().await; // Short TTL
-    let client = Arc::new(client);
-    let tool = SearchTool::new();
+    let (_client, cache) = create_cache_test_environment().await; // Short TTL
+    let _tool = SearchTool::new();
 
     // Insert entry into cache
     let cache_key = "search:ttl-test:10";
@@ -227,7 +223,7 @@ async fn test_cache_ttl_expiration() {
     // Verify entry is cached
     {
         let cache_guard = cache.read().await;
-        let cached = cache_guard.get(cache_key).await;
+        let cached = cache_guard.get(&cache_key.to_string()).await;
         assert!(cached.is_some(), "Entry should be initially cached");
     }
 
@@ -244,15 +240,14 @@ async fn test_cache_ttl_expiration() {
     // Verify entry is no longer cached
     {
         let cache_guard = cache.read().await;
-        let cached = cache_guard.get(cache_key).await;
+        let cached = cache_guard.get(&cache_key.to_string()).await;
         assert!(cached.is_none(), "Entry should be expired and removed");
     }
 }
 
 #[tokio::test]
 async fn test_cache_lru_eviction() {
-    let (client, cache) = create_test_environment().await;
-    let client = Arc::new(client);
+    let (_client, _cache) = create_test_environment().await;
 
     // Manually create a cache with very small capacity for testing eviction
     let small_cache = Arc::new(RwLock::new(MemoryCache::new(
@@ -260,7 +255,7 @@ async fn test_cache_lru_eviction() {
         Duration::from_secs(3600),
     )));
 
-    let tool = SearchTool::new();
+    let _tool = SearchTool::new();
 
     // Fill cache to capacity
     let entries = vec![
@@ -298,15 +293,15 @@ async fn test_cache_lru_eviction() {
         assert_eq!(stats.size, 2, "Cache should maintain capacity limit");
 
         // The first entry should have been evicted (LRU)
-        let first_entry = cache_guard.get("search:entry1:10").await;
+        let first_entry = cache_guard.get(&"search:entry1:10".to_string()).await;
         assert!(
             first_entry.is_none(),
             "Oldest entry should have been evicted"
         );
 
         // Newer entries should still be present
-        let second_entry = cache_guard.get("search:entry2:10").await;
-        let third_entry = cache_guard.get("search:entry3:10").await;
+        let second_entry = cache_guard.get(&"search:entry2:10".to_string()).await;
+        let third_entry = cache_guard.get(&"search:entry3:10".to_string()).await;
         assert!(
             second_entry.is_some() || third_entry.is_some(),
             "Newer entries should be preserved"
@@ -318,7 +313,7 @@ async fn test_cache_lru_eviction() {
 async fn test_cache_concurrent_access() {
     let (client, cache) = create_test_environment().await;
     let client = Arc::new(client);
-    let tool = SearchTool::new();
+    let _tool = SearchTool::new();
 
     // Pre-populate cache
     let cache_key = "search:concurrent:10";
@@ -335,7 +330,7 @@ async fn test_cache_concurrent_access() {
     let mut handles = vec![];
 
     for i in 0..5 {
-        let client_clone = client.clone();
+        let client_clone = Arc::clone(&client);
         let cache_clone = cache.clone();
         let tool_clone = SearchTool::new();
 
@@ -450,8 +445,7 @@ async fn test_cache_statistics_accuracy() {
 
 #[tokio::test]
 async fn test_cache_clear_functionality() {
-    let (client, cache) = create_test_environment().await;
-    let client = Arc::new(client);
+    let (_client, cache) = create_test_environment().await;
 
     // Populate cache with multiple entries
     let entries = vec![
@@ -489,7 +483,7 @@ async fn test_cache_clear_functionality() {
 
         // Verify specific entries are gone
         for (key, _) in &entries {
-            let cached = cache_guard.get(key).await;
+            let cached = cache_guard.get(&key.to_string()).await;
             assert!(cached.is_none(), "Entry {} should be cleared", key);
         }
     }

@@ -6,7 +6,7 @@
 use chrono::Utc;
 use rustacean_docs_cache::MemoryCache;
 use rustacean_docs_client::DocsClient;
-use rustacean_docs_core::models::search::{CrateSearchResult, SearchRequest};
+use rustacean_docs_core::models::search::CrateSearchResult;
 use rustacean_docs_mcp_server::tools::{search::SearchTool, ToolHandler};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -27,7 +27,7 @@ async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
 }
 
 /// Helper function to create a mock search result
-fn create_mock_search_result(name: &str, version: &str) -> CrateSearchResult {
+fn _create_mock_search_result(name: &str, version: &str) -> CrateSearchResult {
     CrateSearchResult {
         name: name.to_string(),
         version: version.to_string(),
@@ -157,7 +157,7 @@ async fn test_search_cache_integration() {
 
     {
         let cache_guard = cache.read().await;
-        let cached = cache_guard.get(expected_cache_key).await;
+        let cached = cache_guard.get(&expected_cache_key.to_string()).await;
         assert!(
             cached.is_some(),
             "Manually inserted value should be retrievable"
@@ -266,7 +266,7 @@ async fn test_search_tool_multiple_queries_different_cache_keys() {
         ("search:query2:10", "query2", 10),
     ];
 
-    for (cache_key, query, limit) in &test_cases {
+    for (cache_key, _query, _limit) in &test_cases {
         let mock_response = json!({
             "results": [],
             "total": 0,

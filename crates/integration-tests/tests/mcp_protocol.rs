@@ -297,8 +297,8 @@ async fn test_tool_response_format() {
 
     // Test numeric fields
     if result_item["download_count"].is_number() {
-        let download_count = result_item["download_count"].as_u64().unwrap();
-        assert!(download_count >= 0, "Download count should be non-negative");
+        let _download_count = result_item["download_count"].as_u64().unwrap();
+        // u64 is always non-negative
     }
 
     // Test total field
