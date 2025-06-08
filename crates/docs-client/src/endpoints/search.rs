@@ -128,7 +128,7 @@ struct CratesIoCrate {
     #[serde(rename = "max_version")]
     max_version: String,
     #[serde(rename = "max_stable_version")]
-    max_stable_version: String,
+    max_stable_version: Option<String>,
     #[serde(rename = "default_version")]
     default_version: String,
     #[serde(rename = "description")]
@@ -311,7 +311,7 @@ mod tests {
             name: name.to_string(),
             newest_version: version.to_string(),
             max_version: version.to_string(),
-            max_stable_version: version.to_string(),
+            max_stable_version: Some(version.to_string()),
             default_version: version.to_string(),
             description: None,
             downloads: None,
