@@ -86,15 +86,12 @@ impl McpServer {
     }
 
     fn register_default_tools(&mut self) -> Result<()> {
-        // Tool registration will be implemented as we add each tool
-        // For now, just log that we're registering tools
         info!("Registering default tools...");
 
-        // TODO: Register actual tools here
-        // self.register_tool("search_crate", Box::new(SearchTool::new()))?;
-        // self.register_tool("get_crate_docs", Box::new(CrateDocsTool::new()))?;
-        // etc.
+        // Register the search tool
+        self.register_tool("search_crate", Box::new(crate::tools::SearchTool::new()))?;
 
+        info!("Registered {} tools", self.tools.len());
         Ok(())
     }
 

@@ -11,7 +11,8 @@
       "Bash(cargo test:*)",
       "Bash(cargo fmt:*)",
       "Bash(cargo clippy:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(RUST_BACKTRACE=1 cargo test -p rustacean-docs-mcp-server --features integration-tests -- test_search_tool_end_to_end_success)"
     ],
     "deny": []
   }
