@@ -3,12 +3,14 @@ use crate::{
     error_handling::{handle_http_response, parse_json_response, build_docs_url}
 };
 use chrono::{DateTime, Utc};
+use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
     error::Error,
     models::docs::{CrateRelease, RecentReleasesRequest, RecentReleasesResponse},
 };
 use serde::Deserialize;
-use tracing::{debug, error};
+use std::{hash::Hash, sync::Arc, time::Duration};
+use tracing::{debug, error, trace};
 
 /// Raw response from crates.io API for recent crates
 #[derive(Debug, Deserialize)]
@@ -45,7 +47,6 @@ pub struct ReleasesCacheKey {
 }
 
 impl ReleasesCacheKey {
-    #[allow(dead_code)]
     fn new(request: &RecentReleasesRequest) -> Self {
         Self {
             limit: request.limit(),
@@ -56,11 +57,18 @@ impl ReleasesCacheKey {
 /// Releases service for fetching recent crate releases
 pub struct ReleasesService {
     client: DocsClient,
+    cache: Arc<MemoryCache<ReleasesCacheKey, RecentReleasesResponse>>,
 }
 
 impl ReleasesService {
     pub fn new(client: DocsClient) -> Self {
-        Self { client }
+        // Create a cache with 100 capacity and 30 minutes TTL (shorter since releases change frequently)
+        let cache = Arc::new(MemoryCache::new(
+            100,
+            Duration::from_secs(1800), // 30 minutes
+        ));
+
+        Self { client, cache }
     }
 
     /// Fetch recent releases using crates.io API
@@ -68,13 +76,35 @@ impl ReleasesService {
         &self,
         request: &RecentReleasesRequest,
     ) -> Result<RecentReleasesResponse, Error> {
-        debug!(
+        let cache_key = ReleasesCacheKey::new(request);
+
+        // Try to get from cache first
+        if let Some(cached_response) = self.cache.get(&cache_key).await {
+            trace!(
+                limit = request.limit(),
+                "Recent releases cache hit"
+            );
+            return Ok(cached_response);
+        }
+
+        trace!(
             limit = request.limit(),
-            "Fetching recent releases from crates.io API"
+            "Recent releases cache miss, fetching from API"
         );
 
         let releases = self.fetch_releases_from_api(request).await?;
-        Ok(RecentReleasesResponse { releases })
+        let response = RecentReleasesResponse { releases };
+
+        // Store in cache for future requests
+        self.cache.insert(cache_key, response.clone()).await;
+
+        debug!(
+            limit = request.limit(),
+            total_releases = response.releases.len(),
+            "Recent releases fetched and cached successfully"
+        );
+
+        Ok(response)
     }
 
     async fn fetch_releases_from_api(
@@ -144,6 +174,21 @@ impl ReleasesService {
             published_at,
             docs_url: Some(docs_url),
         })
+    }
+
+    /// Get cache statistics
+    pub async fn cache_stats(&self) -> rustacean_docs_core::CacheLayerStats {
+        self.cache.stats().await
+    }
+
+    /// Clear the entire cache
+    pub async fn clear_cache(&self) -> usize {
+        self.cache.clear().await
+    }
+
+    /// Clean up expired cache entries
+    pub async fn cleanup_expired(&self) -> usize {
+        self.cache.cleanup_expired().await
     }
 }
 

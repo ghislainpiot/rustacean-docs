@@ -3,6 +3,7 @@ use crate::{
     error_handling::{handle_http_response, parse_json_response, build_basic_docs_url}
 };
 use chrono::Utc;
+use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
     error::Error,
     models::metadata::{
@@ -10,8 +11,8 @@ use rustacean_docs_core::{
     },
 };
 use serde::Deserialize;
-use std::collections::HashMap;
-use tracing::{debug, error};
+use std::{collections::HashMap, hash::Hash, sync::Arc, time::Duration};
+use tracing::{debug, error, trace};
 use url::Url;
 
 /// Cache key for metadata requests
@@ -129,11 +130,18 @@ impl From<CratesIoDependency> for Dependency {
 /// Metadata service for fetching crate metadata
 pub struct MetadataService {
     client: DocsClient,
+    cache: Arc<MemoryCache<MetadataCacheKey, CrateMetadata>>,
 }
 
 impl MetadataService {
     pub fn new(client: DocsClient) -> Self {
-        Self { client }
+        // Create a cache with 1000 capacity and 1 hour TTL
+        let cache = Arc::new(MemoryCache::new(
+            1000,
+            Duration::from_secs(3600),
+        ));
+
+        Self { client, cache }
     }
 
     /// Fetch comprehensive metadata for a crate
@@ -141,11 +149,36 @@ impl MetadataService {
         &self,
         request: &CrateMetadataRequest,
     ) -> Result<CrateMetadata, Error> {
-        debug!("Fetching metadata for crate: {}", request.crate_name);
+        let cache_key = MetadataCacheKey::new(request);
 
-        // For now, directly fetch from API without caching
-        // TODO: Implement caching once cache integration is finalized
-        self.fetch_metadata_from_api(request).await
+        // Try to get from cache first
+        if let Some(cached_metadata) = self.cache.get(&cache_key).await {
+            trace!(
+                crate_name = %request.crate_name,
+                version = ?request.version,
+                "Metadata cache hit"
+            );
+            return Ok(cached_metadata);
+        }
+
+        trace!(
+            crate_name = %request.crate_name,
+            version = ?request.version,
+            "Metadata cache miss, fetching from API"
+        );
+
+        let metadata = self.fetch_metadata_from_api(request).await?;
+
+        // Store in cache for future requests
+        self.cache.insert(cache_key, metadata.clone()).await;
+
+        debug!(
+            crate_name = %request.crate_name,
+            version = ?request.version,
+            "Metadata fetched and cached successfully"
+        );
+
+        Ok(metadata)
     }
 
     async fn fetch_metadata_from_api(
@@ -322,6 +355,21 @@ impl MetadataService {
         } else {
             vec![]
         }
+    }
+
+    /// Get cache statistics
+    pub async fn cache_stats(&self) -> rustacean_docs_core::CacheLayerStats {
+        self.cache.stats().await
+    }
+
+    /// Clear the entire cache
+    pub async fn clear_cache(&self) -> usize {
+        self.cache.clear().await
+    }
+
+    /// Clean up expired cache entries
+    pub async fn cleanup_expired(&self) -> usize {
+        self.cache.cleanup_expired().await
     }
 }
 
