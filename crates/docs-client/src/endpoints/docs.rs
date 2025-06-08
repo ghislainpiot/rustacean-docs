@@ -1,7 +1,10 @@
-use crate::{client::DocsClient, html_parser::HtmlParser};
+use crate::{
+    client::DocsClient, 
+    html_parser::HtmlParser,
+    error_handling::{build_docs_url, build_item_docs_url}
+};
 use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
-    error::ErrorContext,
     models::docs::{
         CrateCategories, CrateDocsRequest, CrateDocsResponse, CrateItem, CrateRelease,
         CrateSummary, ItemDocsRequest, ItemDocsResponse, ItemKind, RecentReleasesRequest,
@@ -12,7 +15,6 @@ use rustacean_docs_core::{
 use scraper::{Html, Selector};
 use std::{hash::Hash, sync::Arc, time::Duration};
 use tracing::{debug, trace};
-use url::Url;
 
 /// Cache key for crate documentation requests
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -352,12 +354,7 @@ fn parse_crate_documentation(
     let examples = parser.extract_code_examples();
 
     // Generate docs URL
-    let docs_url = Some(
-        Url::parse(&format!(
-            "https://docs.rs/{crate_name}/{actual_version}/{crate_name}/"
-        ))
-        .context("Failed to construct docs.rs URL")?,
-    );
+    let docs_url = Some(build_docs_url(crate_name, &actual_version)?);
 
     Ok(CrateDocsResponse {
         name: crate_name.to_string(),
@@ -400,12 +397,7 @@ fn parse_item_documentation(
 
     // Generate docs URL
     let actual_version = resolve_version(version.clone());
-    let docs_url = Some(
-        Url::parse(&format!(
-            "https://docs.rs/{crate_name}/{actual_version}/{crate_name}/{item_path}"
-        ))
-        .context("Failed to construct item docs URL")?,
-    );
+    let docs_url = Some(build_item_docs_url(crate_name, &actual_version, item_path)?);
 
     Ok(ItemDocsResponse {
         crate_name: crate_name.to_string(),
@@ -761,7 +753,7 @@ fn extract_release_info(element: &scraper::ElementRef) -> Option<CrateRelease> {
     };
 
     // Generate docs URL
-    let docs_url = Url::parse(&format!("https://docs.rs/{name}/{version}")).ok();
+    let docs_url = build_docs_url(&name, &version).ok();
 
     Some(CrateRelease {
         name,
@@ -888,7 +880,7 @@ fn extract_release_info_fallback(element: &scraper::ElementRef) -> Option<CrateR
         None
     };
 
-    let docs_url = Url::parse(&format!("https://docs.rs/{name}/{version}")).ok();
+    let docs_url = build_docs_url(&name, &version).ok();
 
     Some(CrateRelease {
         name,

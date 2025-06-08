@@ -1,4 +1,7 @@
-use crate::client::DocsClient;
+use crate::{
+    client::DocsClient,
+    error_handling::{handle_http_response, parse_json_response, build_docs_url}
+};
 use chrono::{DateTime, Utc};
 use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
@@ -8,7 +11,7 @@ use rustacean_docs_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::{hash::Hash, sync::Arc, time::Duration};
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 use url::Url;
 
 /// Raw response from crates.io search API
@@ -192,24 +195,8 @@ impl DocsClient {
             .await
             .context("Failed to send search request to crates.io")?;
 
-        let status = response.status();
-
-        if !status.is_success() {
-            warn!(
-                url = %full_url,
-                status = %status,
-                "Search request failed"
-            );
-            return Err(rustacean_docs_core::Error::http_request(
-                format!("Search request failed with status: {status}"),
-                Some(status.as_u16()),
-            ));
-        }
-
-        let crates_io_response: CratesIoSearchResponse = response
-            .json()
-            .await
-            .context("Failed to parse search response from crates.io")?;
+        let response = handle_http_response(response, "crates.io search").await?;
+        let crates_io_response: CratesIoSearchResponse = parse_json_response(response, "crates.io search results").await?;
 
         debug!(
             query = %request.query,
@@ -276,13 +263,7 @@ fn transform_crate_data(crate_data: CratesIoCrate) -> Result<CrateSearchResult> 
     };
 
     // Generate docs.rs URL with version
-    let docs_url = Some(
-        Url::parse(&format!(
-            "https://docs.rs/{}/{}/{}/",
-            crate_data.name, DEFAULT_VERSION, crate_data.name
-        ))
-        .context("Failed to construct docs.rs URL")?,
-    );
+    let docs_url = Some(build_docs_url(&crate_data.name, DEFAULT_VERSION)?);
 
     Ok(CrateSearchResult {
         name: crate_data.name,

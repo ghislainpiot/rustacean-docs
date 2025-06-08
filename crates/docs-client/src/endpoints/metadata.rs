@@ -1,4 +1,7 @@
-use crate::client::DocsClient;
+use crate::{
+    client::DocsClient,
+    error_handling::{handle_http_response, parse_json_response, build_basic_docs_url}
+};
 use chrono::Utc;
 use rustacean_docs_core::{
     error::Error,
@@ -164,25 +167,8 @@ impl MetadataService {
                 Error::Network(e)
             })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            error!("API request failed with status {}: {}", status, body);
-
-            return match status.as_u16() {
-                404 => Err(Error::crate_not_found(&request.crate_name)),
-                429 => Err(Error::RateLimit),
-                _ => Err(Error::http_request(
-                    format!("HTTP {status}: {body}"),
-                    Some(status.as_u16()),
-                )),
-            };
-        }
-
-        let crates_io_response: CratesIoResponse = response.json().await.map_err(|e| {
-            error!("Failed to parse crates.io response: {}", e);
-            Error::Network(e)
-        })?;
+        let response = handle_http_response(response, &format!("crates.io metadata for {}", request.crate_name)).await?;
+        let crates_io_response: CratesIoResponse = parse_json_response(response, "crates.io metadata").await?;
 
         self.transform_metadata(crates_io_response, request).await
     }
@@ -229,7 +215,7 @@ impl MetadataService {
             .and_then(|url_str| Url::parse(url_str).ok())
             .or_else(|| {
                 // Default to docs.rs URL if no documentation URL provided
-                Url::parse(&format!("https://docs.rs/{}", crate_info.name)).ok()
+                build_basic_docs_url(&crate_info.name)
             });
 
         // Parse timestamps

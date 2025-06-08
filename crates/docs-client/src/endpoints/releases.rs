@@ -1,4 +1,7 @@
-use crate::client::DocsClient;
+use crate::{
+    client::DocsClient,
+    error_handling::{handle_http_response, parse_json_response, build_docs_url}
+};
 use chrono::{DateTime, Utc};
 use rustacean_docs_core::{
     error::Error,
@@ -6,7 +9,6 @@ use rustacean_docs_core::{
 };
 use serde::Deserialize;
 use tracing::{debug, error};
-use url::Url;
 
 /// Raw response from crates.io API for recent crates
 #[derive(Debug, Deserialize)]
@@ -98,27 +100,8 @@ impl ReleasesService {
                 Error::Network(e)
             })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            error!(
-                "Recent releases API request failed with status {}: {}",
-                status, body
-            );
-
-            return match status.as_u16() {
-                429 => Err(Error::RateLimit),
-                _ => Err(Error::http_request(
-                    format!("HTTP {status}: {body}"),
-                    Some(status.as_u16()),
-                )),
-            };
-        }
-
-        let crates_io_response: CratesIoRecentResponse = response.json().await.map_err(|e| {
-            error!("Failed to parse crates.io recent releases response: {}", e);
-            Error::Network(e)
-        })?;
+        let response = handle_http_response(response, "crates.io recent releases").await?;
+        let crates_io_response: CratesIoRecentResponse = parse_json_response(response, "crates.io recent releases").await?;
 
         debug!(
             total_crates = crates_io_response.meta.total,
@@ -152,14 +135,7 @@ impl ReleasesService {
             .with_timezone(&Utc);
 
         // Generate docs.rs URL for this crate and version
-        let docs_url = Url::parse(&format!(
-            "https://docs.rs/{}/{}/{}/",
-            crate_data.name, crate_data.version, crate_data.name
-        ))
-        .map_err(|e| {
-            error!("Failed to generate docs URL for {}: {}", crate_data.name, e);
-            Error::internal(format!("Failed to generate docs URL: {e}"))
-        })?;
+        let docs_url = build_docs_url(&crate_data.name, &crate_data.version)?;
 
         Ok(CrateRelease {
             name: crate_data.name,
