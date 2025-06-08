@@ -21,6 +21,7 @@ description = "MCP server for Rust documentation access"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
 anyhow = "1.0"
 thiserror = "1.0"
 tracing = "0.1"
@@ -31,6 +32,7 @@ reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"], defau
 
 # Caching
 lru = "0.12"
+cacache = "13.0"
 
 # HTML parsing
 scraper = "0.18"
@@ -49,6 +51,9 @@ regex = "1"
 
 # Async trait support
 async-trait = "0.1"
+
+# Test dependencies  
+tempfile = "3.0"
 
 # MCP protocol - using a placeholder since real mcp-sdk may not exist yet
 # mcp-sdk = { version = "0.1", features = ["server"] }
