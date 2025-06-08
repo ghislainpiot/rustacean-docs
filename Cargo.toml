@@ -34,6 +34,15 @@ lru = "0.12"
 # HTML parsing
 scraper = "0.18"
 
+# URL encoding
+urlencoding = "2.1"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# URL parsing
+url = { version = "2", features = ["serde"] }
+
 # MCP protocol - using a placeholder since real mcp-sdk may not exist yet
 # mcp-sdk = { version = "0.1", features = ["server"] }
 

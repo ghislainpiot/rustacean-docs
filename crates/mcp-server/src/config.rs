@@ -43,7 +43,6 @@ pub struct LoggingSettings {
     pub format: String,
 }
 
-
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {

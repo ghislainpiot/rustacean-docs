@@ -271,6 +271,11 @@ impl DocsClient {
         Ok(json)
     }
 
+    /// Get a reference to the internal reqwest client
+    pub fn inner_client(&self) -> &Client {
+        &self.client
+    }
+
     /// Check if the client can connect to the base URL
     pub async fn health_check(&self) -> Result<bool> {
         trace!("Performing health check");
