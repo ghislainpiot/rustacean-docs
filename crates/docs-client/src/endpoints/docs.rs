@@ -1,9 +1,9 @@
-use crate::client::DocsClient;
+use crate::{client::DocsClient, html_parser::HtmlParser};
 use rustacean_docs_cache::memory::MemoryCache;
 use rustacean_docs_core::{
     error::ErrorContext,
     models::docs::{
-        CodeExample, CrateCategories, CrateDocsRequest, CrateDocsResponse, CrateItem, CrateRelease,
+        CrateCategories, CrateDocsRequest, CrateDocsResponse, CrateItem, CrateRelease,
         CrateSummary, ItemDocsRequest, ItemDocsResponse, ItemKind, RecentReleasesRequest,
         RecentReleasesResponse, Visibility,
     },
@@ -327,20 +327,20 @@ fn parse_crate_documentation(
     crate_name: &str,
     version: &Option<String>,
 ) -> Result<CrateDocsResponse> {
-    let document = Html::parse_document(html);
+    let parser = HtmlParser::new(html);
 
     // Extract version from page if not provided
     let actual_version = resolve_version(
         version
             .clone()
-            .or_else(|| extract_version_from_page(&document)),
+            .or_else(|| parser.extract_version()),
     );
 
     // Extract crate description
-    let description = extract_crate_description(&document);
+    let description = parser.extract_description();
 
     // Parse navigation structure to get items
-    let items = parse_navigation_items(&document)?;
+    let items = parse_navigation_items(&parser)?;
 
     // Generate summary from parsed items
     let summary = generate_crate_summary(&items, description.clone());
@@ -349,7 +349,7 @@ fn parse_crate_documentation(
     let categories = categorize_items(&items);
 
     // Extract code examples
-    let examples = extract_code_examples(&document);
+    let examples = parser.extract_code_examples();
 
     // Generate docs URL
     let docs_url = Some(
@@ -377,25 +377,26 @@ fn parse_item_documentation(
     item_path: &str,
     version: &Option<String>,
 ) -> Result<ItemDocsResponse> {
-    let document = Html::parse_document(html);
+    let parser = HtmlParser::new(html);
+    let document = parser.document();
 
     // Extract item name from the page
-    let name = extract_item_name(&document, item_path);
+    let name = extract_item_name(document, item_path);
 
     // Determine item kind
-    let kind = extract_item_kind(&document);
+    let kind = extract_item_kind(document);
 
     // Extract signature
-    let signature = extract_item_signature(&document);
+    let signature = extract_item_signature(document);
 
     // Extract description
-    let description = extract_item_description(&document);
+    let description = extract_item_description(document);
 
     // Extract code examples
-    let examples = extract_code_examples(&document);
+    let examples = parser.extract_code_examples();
 
     // Extract related items
-    let related_items = extract_related_items(&document);
+    let related_items = extract_related_items(document);
 
     // Generate docs URL
     let actual_version = resolve_version(version.clone());
@@ -445,86 +446,16 @@ fn parse_recent_releases(html: &str, limit: usize) -> Result<Vec<CrateRelease>> 
 }
 
 /// Extract version from the documentation page
-fn extract_version_from_page(document: &Html) -> Option<String> {
-    // Try to find version in the page title or header
-    let version_selector = Selector::parse(".version, .crate-version, h1 .version").ok()?;
-
-    for element in document.select(&version_selector) {
-        if let Some(text) = element.text().next() {
-            let version = text.trim().trim_start_matches('v');
-            if !version.is_empty() {
-                return Some(version.to_string());
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract crate description from the documentation
-fn extract_crate_description(document: &Html) -> Option<String> {
-    // Try various selectors for crate description
-    let description_selectors = [
-        ".docblock.item-decl p",
-        ".crate-description",
-        ".docblock p:first-child",
-        "meta[name='description']",
-    ];
-
-    for selector_str in &description_selectors {
-        if let Ok(selector) = Selector::parse(selector_str) {
-            if let Some(element) = document.select(&selector).next() {
-                let text = if selector_str.contains("meta") {
-                    element.value().attr("content").map(|s| s.to_string())
-                } else {
-                    Some(element.text().collect::<String>().trim().to_string())
-                };
-
-                if let Some(desc) = text {
-                    if !desc.is_empty() {
-                        return Some(desc);
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
 
 /// Parse navigation items to extract crate structure
-fn parse_navigation_items(document: &Html) -> Result<Vec<CrateItem>> {
+fn parse_navigation_items(parser: &HtmlParser) -> Result<Vec<CrateItem>> {
+    let api_links = parser.extract_api_links();
     let mut items = Vec::new();
 
-    // Parse sidebar navigation for actual API items
-    // Target links that match docs.rs API item patterns
-    let nav_selectors = [
-        // Navigation sidebar with API items
-        "nav a[href]",
-        ".sidebar a[href]",
-        // Main content area item lists (correct selector for docs.rs structure)
-        ".item-table dt a[href]",
-        ".docblock a[href]",
-    ];
-
-    for selector_str in &nav_selectors {
-        if let Ok(selector) = Selector::parse(selector_str) {
-            for element in document.select(&selector) {
-                if let Some(href) = element.value().attr("href") {
-                    trace!(href = %href, "Found link in navigation");
-                    // Only include API items (exclude doc sections and external links)
-                    if is_api_item_href(href) {
-                        trace!(href = %href, "Link matches API item pattern");
-                        if let Some(item) = extract_nav_item(&element) {
-                            trace!(name = %item.name, kind = ?item.kind, path = %item.path, "Extracted API item");
-                            items.push(item);
-                        }
-                    } else {
-                        trace!(href = %href, "Link filtered out (not API item)");
-                    }
-                }
-            }
-        }
+    for (text, href) in api_links {
+        let item = create_crate_item_from_link(text, href);
+        trace!(name = %item.name, kind = ?item.kind, path = %item.path, "Extracted API item");
+        items.push(item);
     }
 
     // Remove duplicates
@@ -534,52 +465,23 @@ fn parse_navigation_items(document: &Html) -> Result<Vec<CrateItem>> {
     Ok(items)
 }
 
-/// Check if an href points to an actual API item (not doc sections or external links)
-fn is_api_item_href(href: &str) -> bool {
-    // Skip external links, anchors, and non-API paths
-    if href.starts_with("http") || href.starts_with("//") || href.starts_with('#') {
-        return false;
-    }
-
-    // API item patterns from docs.rs
-    href.contains("trait.") && href.ends_with(".html")
-        || href.contains("struct.") && href.ends_with(".html")
-        || href.contains("enum.") && href.ends_with(".html")
-        || href.contains("fn.") && href.ends_with(".html")
-        || href.contains("macro.") && href.ends_with(".html")
-        || href.contains("derive.") && href.ends_with(".html")
-        || href.contains("constant.") && href.ends_with(".html")
-        || href.contains("type.") && href.ends_with(".html")
-        || href.contains("union.") && href.ends_with(".html")
-        || (href.ends_with("/index.html") && !href.starts_with("../") && href != "index.html")
-}
-
-/// Extract a navigation item from an HTML element
-fn extract_nav_item(element: &scraper::ElementRef) -> Option<CrateItem> {
-    let name = element.text().collect::<String>().trim().to_string();
-    if name.is_empty() {
-        return None;
-    }
-
-    let path = element.value().attr("href").unwrap_or("").to_string();
-
-    // Determine item kind from the link or surrounding context
+/// Create a CrateItem from extracted link text and href
+fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
+    // Determine item kind from the link
     let kind = infer_item_kind(&path, &name);
 
-    // Extract any summary from title attribute
-    let summary = element.value().attr("title").map(|s| s.to_string());
-
-    Some(CrateItem {
+    CrateItem {
         name,
         kind,
-        summary,
+        summary: None, // Could be enhanced to extract from title attributes
         path: path.clone(),
         visibility: Visibility::Public, // Assume public for items in navigation
         is_async: false,                // Would need more analysis to determine
         signature: None,
         docs_path: Some(path),
-    })
+    }
 }
+
 
 /// Infer item kind from path or name
 fn infer_item_kind(path: &str, _name: &str) -> ItemKind {
@@ -677,43 +579,6 @@ fn categorize_items(items: &[CrateItem]) -> CrateCategories {
         macros,
         constants,
     }
-}
-
-/// Extract code examples from documentation
-fn extract_code_examples(document: &Html) -> Vec<CodeExample> {
-    let mut examples = Vec::new();
-
-    // Look for code blocks in the documentation
-    let code_selectors = [
-        "pre.rust code",
-        ".example-wrap pre code",
-        ".docblock pre.rust",
-    ];
-
-    for selector_str in &code_selectors {
-        if let Ok(selector) = Selector::parse(selector_str) {
-            for (index, element) in document.select(&selector).enumerate() {
-                let code = element.text().collect::<String>();
-                if !code.trim().is_empty() {
-                    let title = Some(format!("Example {}", index + 1));
-                    let is_runnable = element
-                        .parent()
-                        .and_then(|p| p.value().as_element())
-                        .map(|e| e.classes().any(|c| c == "example-wrap"))
-                        .unwrap_or(false);
-
-                    examples.push(CodeExample {
-                        title,
-                        code: code.trim().to_string(),
-                        language: "rust".to_string(),
-                        is_runnable,
-                    });
-                }
-            }
-        }
-    }
-
-    examples
 }
 
 /// Extract item name from documentation page
@@ -1449,8 +1314,8 @@ mod tests {
     #[test]
     fn test_parse_navigation_items_serde() {
         let html = load_test_html("serde_docs.html");
-        let document = Html::parse_document(&html);
-        let result = parse_navigation_items(&document);
+        let parser = HtmlParser::new(&html);
+        let result = parse_navigation_items(&parser);
 
         assert!(result.is_ok());
         let items = result.unwrap();
@@ -1470,8 +1335,8 @@ mod tests {
     #[test]
     fn test_categorize_items_with_fixtures() {
         let html = load_test_html("tokio_docs.html");
-        let document = Html::parse_document(&html);
-        let items = parse_navigation_items(&document).unwrap();
+        let parser = HtmlParser::new(&html);
+        let items = parse_navigation_items(&parser).unwrap();
         let categories = categorize_items(&items);
 
         // Should have multiple categories
@@ -1498,16 +1363,16 @@ mod tests {
                 </body>
             </html>
         "#;
-        let document = Html::parse_document(html);
-        let version = extract_version_from_page(&document);
+        let parser = HtmlParser::new(html);
+        let version = parser.extract_version();
         assert_eq!(version, Some("1.35.0".to_string()));
     }
 
     #[test]
     fn test_extract_version_from_fixture() {
         let html = load_test_html("serde_docs.html");
-        let document = Html::parse_document(&html);
-        let version = extract_version_from_page(&document);
+        let parser = HtmlParser::new(&html);
+        let version = parser.extract_version();
         assert_eq!(version, Some("1.0.219".to_string()));
     }
 
@@ -1581,22 +1446,22 @@ mod tests {
     #[test]
     fn test_is_api_item_href_edge_cases() {
         // Valid API item patterns
-        assert!(is_api_item_href("trait.Serialize.html"));
-        assert!(is_api_item_href("struct.HashMap.html"));
-        assert!(is_api_item_href("de/index.html"));
+        assert!(HtmlParser::is_api_item_href("trait.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href("struct.HashMap.html"));
+        assert!(HtmlParser::is_api_item_href("de/index.html"));
 
         // Invalid patterns that should be filtered
-        assert!(!is_api_item_href("javascript:void(0)"));
-        assert!(!is_api_item_href("https://example.com"));
-        assert!(!is_api_item_href("//external.com"));
-        assert!(!is_api_item_href("#anchor"));
-        assert!(!is_api_item_href("../parent/page.html"));
-        assert!(!is_api_item_href(""));
+        assert!(!HtmlParser::is_api_item_href("javascript:void(0)"));
+        assert!(!HtmlParser::is_api_item_href("https://example.com"));
+        assert!(!HtmlParser::is_api_item_href("//external.com"));
+        assert!(!HtmlParser::is_api_item_href("#anchor"));
+        assert!(!HtmlParser::is_api_item_href("../parent/page.html"));
+        assert!(!HtmlParser::is_api_item_href(""));
 
         // Edge cases
-        assert!(!is_api_item_href("all.html")); // "All Items" link
-        assert!(!is_api_item_href("help.html")); // Help link
-        assert!(!is_api_item_href("settings.html")); // Settings link
+        assert!(!HtmlParser::is_api_item_href("all.html")); // "All Items" link
+        assert!(!HtmlParser::is_api_item_href("help.html")); // Help link
+        assert!(!HtmlParser::is_api_item_href("settings.html")); // Settings link
     }
 
     #[test]
@@ -1633,33 +1498,31 @@ mod tests {
         let html = r#"
             <html>
                 <body>
-                    <!-- Empty link text -->
-                    <a href="trait.Empty.html" title="trait test::Empty"></a>
-                    
-                    <!-- No href attribute -->
-                    <a title="trait test::NoHref">NoHref</a>
-                    
-                    <!-- Valid item -->
-                    <a href="trait.Valid.html" title="trait test::Valid">Valid</a>
+                    <nav>
+                        <!-- Empty link text -->
+                        <a href="trait.Empty.html" title="trait test::Empty"></a>
+                        
+                        <!-- No href attribute -->
+                        <a title="trait test::NoHref">NoHref</a>
+                        
+                        <!-- Valid item -->
+                        <a href="trait.Valid.html" title="trait test::Valid">Valid</a>
+                    </nav>
                 </body>
             </html>
         "#;
-        let document = Html::parse_document(html);
-        let selector = Selector::parse("a").unwrap();
+        let parser = HtmlParser::new(html);
+        let api_links = parser.extract_api_links();
 
-        let items: Vec<_> = document
-            .select(&selector)
-            .filter_map(|element| extract_nav_item(&element))
-            .collect();
+        // Should only extract valid API links (links with href that match API patterns and have text)
+        assert_eq!(api_links.len(), 1);
 
-        // Should extract 2 items: one with empty path (NoHref) and one valid (Valid)
-        assert_eq!(items.len(), 2);
-
-        // Filter to only valid items (non-empty paths)
-        let valid_items: Vec<_> = items.iter().filter(|item| !item.path.is_empty()).collect();
-        assert_eq!(valid_items.len(), 1);
-        assert_eq!(valid_items[0].name, "Valid");
-        assert_eq!(valid_items[0].kind, ItemKind::Trait);
+        let (name, href) = &api_links[0];
+        assert_eq!(name, "Valid");
+        assert_eq!(href, "trait.Valid.html");
+        
+        // Test that the link is correctly identified as an API item
+        assert!(HtmlParser::is_api_item_href(href));
     }
 
     #[test]
@@ -1718,8 +1581,8 @@ mod tests {
                 </body>
             </html>
         "#;
-        let document = Html::parse_document(html);
-        let description = extract_crate_description(&document);
+        let parser = HtmlParser::new(html);
+        let description = parser.extract_description();
         assert_eq!(
             description,
             Some("A runtime for writing reliable, asynchronous applications".to_string())
@@ -1880,26 +1743,26 @@ mod tests {
     #[test]
     fn test_is_api_item_href() {
         // Test valid API item hrefs
-        assert!(is_api_item_href("trait.Serialize.html"));
-        assert!(is_api_item_href("struct.HashMap.html"));
-        assert!(is_api_item_href("enum.Option.html"));
-        assert!(is_api_item_href("fn.println.html"));
-        assert!(is_api_item_href("macro.vec.html"));
-        assert!(is_api_item_href("derive.Serialize.html"));
-        assert!(is_api_item_href("constant.PI.html"));
-        assert!(is_api_item_href("type.Result.html"));
-        assert!(is_api_item_href("union.MyUnion.html"));
-        assert!(is_api_item_href("de/index.html"));
-        assert!(is_api_item_href("ser/index.html"));
+        assert!(HtmlParser::is_api_item_href("trait.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href("struct.HashMap.html"));
+        assert!(HtmlParser::is_api_item_href("enum.Option.html"));
+        assert!(HtmlParser::is_api_item_href("fn.println.html"));
+        assert!(HtmlParser::is_api_item_href("macro.vec.html"));
+        assert!(HtmlParser::is_api_item_href("derive.Serialize.html"));
+        assert!(HtmlParser::is_api_item_href("constant.PI.html"));
+        assert!(HtmlParser::is_api_item_href("type.Result.html"));
+        assert!(HtmlParser::is_api_item_href("union.MyUnion.html"));
+        assert!(HtmlParser::is_api_item_href("de/index.html"));
+        assert!(HtmlParser::is_api_item_href("ser/index.html"));
 
         // Test invalid hrefs
-        assert!(!is_api_item_href("#data-formats")); // Documentation sections
-        assert!(!is_api_item_href("#design"));
-        assert!(!is_api_item_href("https://example.com"));
-        assert!(!is_api_item_href("//external.com"));
-        assert!(!is_api_item_href("../parent/page.html"));
-        assert!(!is_api_item_href("javascript:void(0)"));
-        assert!(!is_api_item_href(""));
-        assert!(!is_api_item_href("just-text"));
+        assert!(!HtmlParser::is_api_item_href("#data-formats")); // Documentation sections
+        assert!(!HtmlParser::is_api_item_href("#design"));
+        assert!(!HtmlParser::is_api_item_href("https://example.com"));
+        assert!(!HtmlParser::is_api_item_href("//external.com"));
+        assert!(!HtmlParser::is_api_item_href("../parent/page.html"));
+        assert!(!HtmlParser::is_api_item_href("javascript:void(0)"));
+        assert!(!HtmlParser::is_api_item_href(""));
+        assert!(!HtmlParser::is_api_item_href("just-text"));
     }
 }
