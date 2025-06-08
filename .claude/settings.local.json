@@ -23,7 +23,8 @@
       "Bash(target/debug/rustacean-docs-cli:*)",
       "mcp__rust-docs__get_crate_metadata",
       "mcp__rust-docs__list_recent_releases",
-      "mcp__rust-docs__get_cache_stats"
+      "mcp__rust-docs__get_cache_stats",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

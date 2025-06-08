@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::ToolHandler;
+use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -27,40 +27,22 @@ pub struct CrateDocsToolInput {
     pub version: Option<String>,
 }
 
-impl CrateDocsToolInput {
-    /// Validate the input parameters
-    pub fn validate(&self) -> Result<(), Error> {
-        if self.crate_name.trim().is_empty() {
-            return Err(Error::invalid_input(
-                "get_crate_docs",
-                "crate_name cannot be empty",
-            ));
-        }
-
-        // Basic crate name validation - should contain only valid characters
-        if !self
-            .crate_name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(Error::invalid_input(
-                "get_crate_docs",
-                "crate_name contains invalid characters",
-            ));
-        }
-
-        // Validate version format if provided
-        if let Some(ref version) = self.version {
-            if version.trim().is_empty() {
-                return Err(Error::invalid_input(
-                    "get_crate_docs",
-                    "version cannot be empty string",
-                ));
-            }
-        }
-
+impl ToolInput for CrateDocsToolInput {
+    fn validate(&self) -> Result<(), Error> {
+        ParameterValidator::validate_crate_name(&self.crate_name, "get_crate_docs")?;
+        ParameterValidator::validate_version(&self.version, "get_crate_docs")?;
         Ok(())
     }
+
+    fn cache_key(&self, tool_name: &str) -> String {
+        match &self.version {
+            Some(version) => format!("{}:{}:{}", tool_name, self.crate_name, version),
+            None => format!("{}:{}:latest", tool_name, self.crate_name),
+        }
+    }
+}
+
+impl CrateDocsToolInput {
 
     /// Convert to internal CrateDocsRequest
     pub fn to_crate_docs_request(&self) -> CrateDocsRequest {
@@ -79,13 +61,6 @@ impl CrateDocsTool {
         Self
     }
 
-    /// Generate cache key for crate docs requests
-    fn cache_key(input: &CrateDocsToolInput) -> String {
-        match &input.version {
-            Some(version) => format!("crate_docs:{}:{}", input.crate_name, version),
-            None => format!("crate_docs:{}:latest", input.crate_name),
-        }
-    }
 
     /// Transform CrateDocsResponse to JSON value for MCP protocol
     fn response_to_json(response: CrateDocsResponse) -> Value {
@@ -155,7 +130,7 @@ impl ToolHandler for CrateDocsTool {
             "Processing crate docs request"
         );
 
-        let cache_key = Self::cache_key(&input);
+        let cache_key = input.cache_key("crate_docs");
 
         // Try to get from cache first
         {
@@ -337,14 +312,14 @@ mod tests {
             crate_name: "tokio".to_string(),
             version: Some("1.0.0".to_string()),
         };
-        let key1 = CrateDocsTool::cache_key(&input1);
+        let key1 = input1.cache_key("crate_docs");
         assert_eq!(key1, "crate_docs:tokio:1.0.0");
 
         let input2 = CrateDocsToolInput {
             crate_name: "serde".to_string(),
             version: None,
         };
-        let key2 = CrateDocsTool::cache_key(&input2);
+        let key2 = input2.cache_key("crate_docs");
         assert_eq!(key2, "crate_docs:serde:latest");
 
         // Same crate, different version should have different keys
@@ -352,7 +327,7 @@ mod tests {
             crate_name: "tokio".to_string(),
             version: Some("1.1.0".to_string()),
         };
-        let key3 = CrateDocsTool::cache_key(&input3);
+        let key3 = input3.cache_key("crate_docs");
         assert_ne!(key1, key3);
     }
 
@@ -619,7 +594,7 @@ mod tests {
                 version: Some("1.0.0".to_string()),
             };
 
-            let cache_key = CrateDocsTool::cache_key(&input);
+            let cache_key = input.cache_key("crate_docs");
             assert_eq!(cache_key, "crate_docs:test-crate:1.0.0");
 
             // Test that cache operations work

@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::ToolHandler;
+use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -27,33 +27,19 @@ pub struct SearchToolInput {
     pub limit: Option<usize>,
 }
 
-impl SearchToolInput {
-    /// Validate the input parameters
-    pub fn validate(&self) -> Result<(), Error> {
-        if self.query.trim().is_empty() {
-            return Err(Error::invalid_input(
-                "search_crate",
-                "query cannot be empty",
-            ));
-        }
-
-        if let Some(limit) = self.limit {
-            if limit == 0 {
-                return Err(Error::invalid_input(
-                    "search_crate",
-                    "limit must be greater than 0",
-                ));
-            }
-            if limit > 100 {
-                return Err(Error::invalid_input(
-                    "search_crate",
-                    "limit cannot exceed 100 for performance reasons",
-                ));
-            }
-        }
-
+impl ToolInput for SearchToolInput {
+    fn validate(&self) -> Result<(), Error> {
+        ParameterValidator::validate_query(&self.query, "search_crate")?;
+        ParameterValidator::validate_limit(&self.limit, "search_crate", 100)?;
         Ok(())
     }
+
+    fn cache_key(&self, tool_name: &str) -> String {
+        format!("{}:{}:{}", tool_name, self.query, self.limit.unwrap_or(10))
+    }
+}
+
+impl SearchToolInput {
 
     /// Convert to internal SearchRequest
     pub fn to_search_request(&self) -> SearchRequest {
@@ -72,10 +58,6 @@ impl SearchTool {
         Self
     }
 
-    /// Generate cache key for search requests
-    fn cache_key(input: &SearchToolInput) -> String {
-        format!("search:{}:{}", input.query, input.limit.unwrap_or(10))
-    }
 
     /// Transform SearchResponse to JSON value for MCP protocol
     fn response_to_json(response: SearchResponse) -> Value {
@@ -124,7 +106,7 @@ impl ToolHandler for SearchTool {
             "Processing search request"
         );
 
-        let cache_key = Self::cache_key(&input);
+        let cache_key = input.cache_key("search");
 
         // Try to get from cache first
         {
@@ -289,14 +271,14 @@ mod tests {
             query: "tokio".to_string(),
             limit: Some(20),
         };
-        let key1 = SearchTool::cache_key(&input1);
+        let key1 = input1.cache_key("search");
         assert_eq!(key1, "search:tokio:20");
 
         let input2 = SearchToolInput {
             query: "serde".to_string(),
             limit: None,
         };
-        let key2 = SearchTool::cache_key(&input2);
+        let key2 = input2.cache_key("search");
         assert_eq!(key2, "search:serde:10");
 
         // Same query, different limit should have different keys
@@ -304,7 +286,7 @@ mod tests {
             query: "tokio".to_string(),
             limit: Some(30),
         };
-        let key3 = SearchTool::cache_key(&input3);
+        let key3 = input3.cache_key("search");
         assert_ne!(key1, key3);
     }
 
@@ -494,7 +476,7 @@ mod tests {
                 limit: Some(20),
             };
 
-            let cache_key = SearchTool::cache_key(&input);
+            let cache_key = input.cache_key("search");
             assert_eq!(cache_key, "search:test-crate:20");
 
             // Test that cache operations work

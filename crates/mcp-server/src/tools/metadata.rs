@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::ToolHandler;
+use crate::tools::{ParameterValidator, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -27,28 +27,22 @@ pub struct MetadataToolInput {
     pub version: Option<String>,
 }
 
-impl MetadataToolInput {
-    /// Validate the input parameters
-    pub fn validate(&self) -> Result<(), Error> {
-        if self.crate_name.trim().is_empty() {
-            return Err(Error::invalid_input(
-                "get_crate_metadata",
-                "crate_name cannot be empty",
-            ));
-        }
-
-        // Validate version format if provided
-        if let Some(ref version) = self.version {
-            if version.trim().is_empty() {
-                return Err(Error::invalid_input(
-                    "get_crate_metadata",
-                    "version cannot be empty if provided",
-                ));
-            }
-        }
-
+impl ToolInput for MetadataToolInput {
+    fn validate(&self) -> Result<(), Error> {
+        ParameterValidator::validate_crate_name(&self.crate_name, "get_crate_metadata")?;
+        ParameterValidator::validate_version(&self.version, "get_crate_metadata")?;
         Ok(())
     }
+
+    fn cache_key(&self, tool_name: &str) -> String {
+        match &self.version {
+            Some(version) => format!("{}:{}:{}", tool_name, self.crate_name, version),
+            None => format!("{}:{}:latest", tool_name, self.crate_name),
+        }
+    }
+}
+
+impl MetadataToolInput {
 
     /// Convert to internal request format
     pub fn to_request(&self) -> CrateMetadataRequest {
