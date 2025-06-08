@@ -10,7 +10,7 @@ use tracing::{debug, trace, warn};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct DiskCacheEntry<V> {
     value: V,
-    created_at: u64, // Unix timestamp in seconds
+    created_at: u64, // Unix timestamp in milliseconds
 }
 
 impl<V> DiskCacheEntry<V> {
@@ -18,7 +18,7 @@ impl<V> DiskCacheEntry<V> {
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .context("Failed to get current timestamp")?
-            .as_secs();
+            .as_millis() as u64;
 
         Ok(Self { value, created_at })
     }
@@ -26,11 +26,11 @@ impl<V> DiskCacheEntry<V> {
     fn is_expired(&self, ttl: Duration) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
+            .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        // Check if current time is beyond creation time + TTL
-        now > self.created_at + ttl.as_secs()
+        // Check if current time is beyond creation time + TTL (both in milliseconds)
+        now > self.created_at + ttl.as_millis() as u64
     }
 }
 
@@ -259,10 +259,10 @@ impl DiskCache {
                         {
                             let now = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
-                                .map(|d| d.as_secs())
+                                .map(|d| d.as_millis() as u64)
                                 .unwrap_or(0);
 
-                            let is_valid = now <= created_at + self.ttl.as_secs();
+                            let is_valid = now <= created_at + self.ttl.as_millis() as u64;
                             if !is_valid {
                                 // Entry is expired, remove it
                                 let _ = self.remove_entry(key).await;
@@ -333,10 +333,10 @@ impl DiskCache {
                     {
                         let now = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
-                            .map(|d| d.as_secs())
+                            .map(|d| d.as_millis() as u64)
                             .unwrap_or(0);
 
-                        if now > created_at + self.ttl.as_secs() {
+                        if now > created_at + self.ttl.as_millis() as u64 {
                             expired_keys.push(metadata.key);
                         }
                     }
@@ -751,5 +751,238 @@ mod tests {
             cache.get::<String>("key1").await.unwrap(),
             Some("value2".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_ttl_precision_levels() {
+        // Test TTL precision across different time scales
+        let ttl_scenarios = vec![
+            (Duration::from_millis(50), "50ms"),
+            (Duration::from_millis(100), "100ms"),
+            (Duration::from_millis(500), "500ms"),
+            (Duration::from_secs(1), "1s"),
+            (Duration::from_secs(5), "5s"),
+        ];
+
+        for (ttl, description) in ttl_scenarios {
+            let temp_dir = TempDir::new().unwrap();
+            let cache = DiskCache::new(temp_dir.path(), ttl, 1024 * 1024)
+                .await
+                .unwrap();
+
+            // Insert a value
+            let key = format!("test_key_{}", description);
+            let value = format!("test_value_{}", description);
+            
+            cache.insert(key.clone(), value.clone()).await.unwrap();
+            
+            // Verify it exists immediately
+            assert_eq!(
+                cache.get::<String>(&key).await.unwrap(),
+                Some(value.clone()),
+                "Value should exist immediately for TTL {}",
+                description
+            );
+            assert!(
+                cache.contains(&key).await,
+                "Cache should contain key for TTL {}",
+                description
+            );
+
+            // Wait for 75% of TTL and verify still exists
+            let check_duration = Duration::from_millis((ttl.as_millis() as f64 * 0.75) as u64);
+            sleep(check_duration).await;
+            
+            assert_eq!(
+                cache.get::<String>(&key).await.unwrap(),
+                Some(value),
+                "Value should still exist at 75% TTL for {}",
+                description
+            );
+
+            // Wait for TTL to expire with buffer
+            let remaining_duration = ttl - check_duration + Duration::from_millis(50);
+            sleep(remaining_duration).await;
+
+            // Value should be expired and automatically removed
+            assert_eq!(
+                cache.get::<String>(&key).await.unwrap(),
+                None,
+                "Value should be expired for TTL {}",
+                description
+            );
+            assert!(
+                !cache.contains(&key).await,
+                "Cache should not contain expired key for TTL {}",
+                description
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ttl_edge_cases() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = DiskCache::new(temp_dir.path(), Duration::from_millis(100), 1024 * 1024)
+            .await
+            .unwrap();
+
+        // Test rapid insertion and expiration
+        for i in 0..5 {
+            let key = format!("rapid_key_{}", i);
+            let value = format!("rapid_value_{}", i);
+            
+            cache.insert(key.clone(), value.clone()).await.unwrap();
+            
+            // Sleep just enough to expire
+            sleep(Duration::from_millis(120)).await;
+            
+            assert_eq!(
+                cache.get::<String>(&key).await.unwrap(),
+                None,
+                "Rapid test key {} should be expired",
+                i
+            );
+        }
+
+        // Test mixed fresh and expired entries
+        cache.insert("fresh".to_string(), "fresh_value".to_string()).await.unwrap();
+        cache.insert("expire1".to_string(), "expire_value1".to_string()).await.unwrap();
+        cache.insert("expire2".to_string(), "expire_value2".to_string()).await.unwrap();
+        
+        // Wait for first two to expire
+        sleep(Duration::from_millis(120)).await;
+        
+        // Add fresh entry
+        cache.insert("fresh2".to_string(), "fresh_value2".to_string()).await.unwrap();
+        
+        // Verify state
+        assert_eq!(cache.get::<String>("fresh").await.unwrap(), None);
+        assert_eq!(cache.get::<String>("expire1").await.unwrap(), None);
+        assert_eq!(cache.get::<String>("expire2").await.unwrap(), None);
+        assert_eq!(
+            cache.get::<String>("fresh2").await.unwrap(),
+            Some("fresh_value2".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_expired_comprehensive() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = DiskCache::new(temp_dir.path(), Duration::from_millis(100), 1024 * 1024)
+            .await
+            .unwrap();
+
+        // Insert entries at different times
+        cache.insert("early1".to_string(), "value1".to_string()).await.unwrap();
+        cache.insert("early2".to_string(), "value2".to_string()).await.unwrap();
+        
+        // Wait for these to be close to expiration
+        sleep(Duration::from_millis(80)).await;
+        
+        cache.insert("mid".to_string(), "mid_value".to_string()).await.unwrap();
+        
+        // Wait for early entries to expire
+        sleep(Duration::from_millis(50)).await;
+        
+        cache.insert("late".to_string(), "late_value".to_string()).await.unwrap();
+        
+        // Manual cleanup should remove expired entries
+        let expired_count = cache.cleanup_expired().await.unwrap();
+        assert!(expired_count >= 2, "Should clean up at least 2 expired entries, got {}", expired_count);
+        
+        // Verify state after cleanup
+        assert_eq!(cache.get::<String>("early1").await.unwrap(), None);
+        assert_eq!(cache.get::<String>("early2").await.unwrap(), None);
+        // Note: mid might also be expired by now due to timing
+        assert_eq!(
+            cache.get::<String>("late").await.unwrap(),
+            Some("late_value".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ttl_boundary_conditions() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = DiskCache::new(temp_dir.path(), Duration::from_millis(100), 1024 * 1024)
+            .await
+            .unwrap();
+
+        cache.insert("boundary".to_string(), "boundary_value".to_string()).await.unwrap();
+        
+        // Test at exactly TTL boundary (should be expired)
+        sleep(Duration::from_millis(100)).await;
+        
+        // At exactly 100ms, entry should be expired
+        assert_eq!(
+            cache.get::<String>("boundary").await.unwrap(),
+            None,
+            "Entry should be expired at exact TTL boundary"
+        );
+        
+        // Test just before expiration with safer timing
+        cache.insert("boundary2".to_string(), "boundary_value2".to_string()).await.unwrap();
+        sleep(Duration::from_millis(50)).await; // Well before expiration
+        
+        // Should still be valid well before expiration
+        assert_eq!(
+            cache.get::<String>("boundary2").await.unwrap(),
+            Some("boundary_value2".to_string()),
+            "Entry should be valid well before expiration"
+        );
+        
+        // Wait for expiration with buffer
+        sleep(Duration::from_millis(70)).await; // Total 120ms > 100ms TTL
+        
+        assert_eq!(
+            cache.get::<String>("boundary2").await.unwrap(),
+            None,
+            "Entry should be expired after TTL"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_ttl_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = std::sync::Arc::new(
+            DiskCache::new(temp_dir.path(), Duration::from_millis(200), 1024 * 1024)
+                .await
+                .unwrap()
+        );
+
+        let mut handles = vec![];
+
+        // Spawn multiple tasks that insert and immediately check entries
+        for i in 0..10 {
+            let cache_clone = cache.clone();
+            let handle = tokio::spawn(async move {
+                let key = format!("concurrent_key_{}", i);
+                let value = format!("concurrent_value_{}", i);
+                
+                // Insert
+                cache_clone.insert(key.clone(), value.clone()).await.unwrap();
+                
+                // Immediately verify
+                assert_eq!(
+                    cache_clone.get::<String>(&key).await.unwrap(),
+                    Some(value)
+                );
+                
+                // Wait for expiration
+                sleep(Duration::from_millis(250)).await;
+                
+                // Verify expired
+                assert_eq!(cache_clone.get::<String>(&key).await.unwrap(), None);
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        // Verify cache is empty after all expirations
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.size, 0, "Cache should be empty after all entries expired");
     }
 }
