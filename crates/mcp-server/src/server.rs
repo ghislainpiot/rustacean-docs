@@ -91,6 +91,12 @@ impl McpServer {
         // Register the search tool
         self.register_tool("search_crate", Box::new(crate::tools::SearchTool::new()))?;
 
+        // Register the crate docs tool
+        self.register_tool(
+            "get_crate_docs",
+            Box::new(crate::tools::CrateDocsTool::new()),
+        )?;
+
         info!("Registered {} tools", self.tools.len());
         Ok(())
     }

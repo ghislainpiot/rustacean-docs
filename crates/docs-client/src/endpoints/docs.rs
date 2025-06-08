@@ -707,7 +707,11 @@ fn extract_item_name(document: &Html, fallback: &str) -> String {
     }
 
     // Fallback to extracting name from path
-    fallback.split('/').next_back().unwrap_or(fallback).to_string()
+    fallback
+        .split('/')
+        .next_back()
+        .unwrap_or(fallback)
+        .to_string()
 }
 
 /// Extract item kind from documentation page

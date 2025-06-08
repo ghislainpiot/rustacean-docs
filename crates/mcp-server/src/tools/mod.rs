@@ -6,9 +6,11 @@ use tokio::sync::RwLock;
 use rustacean_docs_cache::MemoryCache;
 use rustacean_docs_client::DocsClient;
 
+pub mod crate_docs;
 pub mod search;
 
 // Re-export tools for convenience
+pub use crate_docs::CrateDocsTool;
 pub use search::SearchTool;
 
 // Type alias for our specific cache implementation
