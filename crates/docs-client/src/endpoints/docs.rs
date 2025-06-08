@@ -495,18 +495,32 @@ fn extract_crate_description(document: &Html) -> Option<String> {
 fn parse_navigation_items(document: &Html) -> Result<Vec<CrateItem>> {
     let mut items = Vec::new();
 
-    // Parse sidebar navigation
+    // Parse sidebar navigation for actual API items
+    // Target links that match docs.rs API item patterns
     let nav_selectors = [
-        ".sidebar .block ul li a",
-        ".sidebar-links a",
-        ".item-table .item-left a",
+        // Navigation sidebar with API items
+        "nav a[href]",
+        ".sidebar a[href]",
+        // Main content area item lists (correct selector for docs.rs structure)
+        ".item-table dt a[href]",
+        ".docblock a[href]",
     ];
 
     for selector_str in &nav_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
             for element in document.select(&selector) {
-                if let Some(item) = extract_nav_item(&element) {
-                    items.push(item);
+                if let Some(href) = element.value().attr("href") {
+                    trace!(href = %href, "Found link in navigation");
+                    // Only include API items (exclude doc sections and external links)
+                    if is_api_item_href(href) {
+                        trace!(href = %href, "Link matches API item pattern");
+                        if let Some(item) = extract_nav_item(&element) {
+                            trace!(name = %item.name, kind = ?item.kind, path = %item.path, "Extracted API item");
+                            items.push(item);
+                        }
+                    } else {
+                        trace!(href = %href, "Link filtered out (not API item)");
+                    }
                 }
             }
         }
@@ -517,6 +531,26 @@ fn parse_navigation_items(document: &Html) -> Result<Vec<CrateItem>> {
     items.dedup_by(|a, b| a.name == b.name && a.kind == b.kind);
 
     Ok(items)
+}
+
+/// Check if an href points to an actual API item (not doc sections or external links)
+fn is_api_item_href(href: &str) -> bool {
+    // Skip external links, anchors, and non-API paths
+    if href.starts_with("http") || href.starts_with("//") || href.starts_with('#') {
+        return false;
+    }
+    
+    // API item patterns from docs.rs
+    href.contains("trait.") && href.ends_with(".html") ||
+    href.contains("struct.") && href.ends_with(".html") ||
+    href.contains("enum.") && href.ends_with(".html") ||
+    href.contains("fn.") && href.ends_with(".html") ||
+    href.contains("macro.") && href.ends_with(".html") ||
+    href.contains("derive.") && href.ends_with(".html") ||
+    href.contains("constant.") && href.ends_with(".html") ||
+    href.contains("type.") && href.ends_with(".html") ||
+    href.contains("union.") && href.ends_with(".html") ||
+    (href.ends_with("/index.html") && !href.starts_with("../") && href != "index.html")
 }
 
 /// Extract a navigation item from an HTML element
@@ -557,6 +591,8 @@ fn infer_item_kind(path: &str, _name: &str) -> ItemKind {
     } else if path.contains("fn.") {
         ItemKind::Function
     } else if path.contains("macro.") {
+        ItemKind::Macro
+    } else if path.contains("derive.") {
         ItemKind::Macro
     } else if path.contains("constant.") {
         ItemKind::Constant
@@ -1271,7 +1307,174 @@ mod tests {
         assert_eq!(releases_expired, 0);
     }
 
-    // Additional tests would be added for HTML parsing functions with mock HTML content
+    // Tests with pre-downloaded HTML files
+    fn load_test_html(filename: &str) -> String {
+        std::fs::read_to_string(format!("test_fixtures/{}", filename))
+            .unwrap_or_else(|_| panic!("Could not load test fixture: {}", filename))
+    }
+
+    #[test]
+    fn test_parse_serde_crate_documentation() {
+        let html = load_test_html("serde_docs.html");
+        let result = parse_crate_documentation(&html, "serde", &None);
+        
+        assert!(result.is_ok());
+        let docs = result.unwrap();
+        
+        // Verify basic crate info
+        assert_eq!(docs.name, "serde");
+        assert_eq!(docs.version, "1.0.219");
+        
+        // Verify items were parsed correctly
+        assert!(!docs.items.is_empty());
+        
+        // Should have traits
+        let trait_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Trait)
+            .collect();
+        assert_eq!(trait_items.len(), 4);
+        
+        // Should have modules  
+        let module_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Module)
+            .collect();
+        
+        // Should have exactly 2 modules: de, ser (no self-reference)
+        assert_eq!(module_items.len(), 2);
+        
+        // Should have macros
+        let macro_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Macro)
+            .collect();
+        assert_eq!(macro_items.len(), 3);
+        
+        // Verify specific items exist
+        let trait_names: Vec<_> = trait_items.iter().map(|item| &item.name).collect();
+        assert!(trait_names.contains(&&"Deserialize".to_string()));
+        assert!(trait_names.contains(&&"Serialize".to_string()));
+        assert!(trait_names.contains(&&"Deserializer".to_string()));
+        assert!(trait_names.contains(&&"Serializer".to_string()));
+        
+        let module_names: Vec<_> = module_items.iter().map(|item| &item.name).collect();
+        assert!(module_names.contains(&&"de".to_string()));
+        assert!(module_names.contains(&&"ser".to_string()));
+        
+        // Verify categories (exact counts based on fixture)
+        assert_eq!(docs.categories.traits.len(), 4);
+        assert_eq!(docs.categories.modules.len(), 2); // de, ser only
+        assert_eq!(docs.categories.macros.len(), 3);
+        
+        // Verify summary counts (exact)
+        assert_eq!(docs.summary.trait_count, 4);
+        assert_eq!(docs.summary.module_count, 2);
+        assert_eq!(docs.summary.function_count, 0);
+        assert_eq!(docs.summary.struct_count, 0);
+        assert_eq!(docs.summary.enum_count, 0);
+    }
+
+    #[test]
+    fn test_parse_tokio_crate_documentation() {
+        let html = load_test_html("tokio_docs.html");
+        let result = parse_crate_documentation(&html, "tokio", &None);
+        
+        assert!(result.is_ok());
+        let docs = result.unwrap();
+        
+        // Verify basic crate info
+        assert_eq!(docs.name, "tokio");
+        assert_eq!(docs.version, "1.35.0");
+        
+        // Should have exactly 7 modules: fs, io, net, runtime, sync, task, time
+        let module_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Module)
+            .collect();
+        assert_eq!(module_items.len(), 7);
+        
+        // Should have exactly 2 structs: JoinError, JoinHandle
+        let struct_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Struct)
+            .collect();
+        assert_eq!(struct_items.len(), 2);
+        
+        // Should have exactly 2 functions: spawn, spawn_blocking
+        let function_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Function)
+            .collect();
+        assert_eq!(function_items.len(), 2);
+        
+        // Should have exactly 4 macros: join, pin, select, try_join (removed non-existent spawn macro)
+        let macro_items: Vec<_> = docs.items.iter()
+            .filter(|item| item.kind == ItemKind::Macro)
+            .collect();
+        assert_eq!(macro_items.len(), 4);
+        
+        // Verify specific items exist
+        let module_names: Vec<_> = module_items.iter().map(|item| &item.name).collect();
+        assert!(module_names.contains(&&"fs".to_string()));
+        assert!(module_names.contains(&&"io".to_string()));
+        assert!(module_names.contains(&&"net".to_string()));
+        assert!(module_names.contains(&&"runtime".to_string()));
+        assert!(module_names.contains(&&"sync".to_string()));
+        assert!(module_names.contains(&&"task".to_string()));
+        assert!(module_names.contains(&&"time".to_string()));
+        
+        let struct_names: Vec<_> = struct_items.iter().map(|item| &item.name).collect();
+        assert!(struct_names.contains(&&"JoinError".to_string()));
+        assert!(struct_names.contains(&&"JoinHandle".to_string()));
+        
+        let function_names: Vec<_> = function_items.iter().map(|item| &item.name).collect();
+        assert!(function_names.contains(&&"spawn".to_string()));
+        assert!(function_names.contains(&&"spawn_blocking".to_string()));
+        
+        let macro_names: Vec<_> = macro_items.iter().map(|item| &item.name).collect();
+        assert!(macro_names.contains(&&"join".to_string()));
+        assert!(macro_names.contains(&&"pin".to_string()));
+        assert!(macro_names.contains(&&"select".to_string()));
+        assert!(macro_names.contains(&&"try_join".to_string()));
+    }
+
+    #[test]
+    fn test_parse_navigation_items_serde() {
+        let html = load_test_html("serde_docs.html");
+        let document = Html::parse_document(&html);
+        let result = parse_navigation_items(&document);
+        
+        assert!(result.is_ok());
+        let items = result.unwrap();
+        
+        // Should find all the expected items
+        assert!(!items.is_empty());
+        
+        // Check for specific items
+        let item_names: Vec<_> = items.iter().map(|item| &item.name).collect();
+        assert!(item_names.contains(&&"Deserialize".to_string()));
+        assert!(item_names.contains(&&"Serialize".to_string()));
+        assert!(item_names.contains(&&"de".to_string()));
+        assert!(item_names.contains(&&"ser".to_string()));
+        assert!(item_names.contains(&&"forward_to_deserialize_any".to_string()));
+    }
+
+    #[test]
+    fn test_categorize_items_with_fixtures() {
+        let html = load_test_html("tokio_docs.html");
+        let document = Html::parse_document(&html);
+        let items = parse_navigation_items(&document).unwrap();
+        let categories = categorize_items(&items);
+        
+        // Should have multiple categories
+        assert!(!categories.modules.is_empty());
+        assert!(!categories.functions.is_empty());
+        assert!(!categories.macros.is_empty());
+        assert!(!categories.core_types.is_empty()); // structs
+        
+        // Verify specific categorization
+        assert!(categories.modules.contains(&"fs".to_string()));
+        assert!(categories.modules.contains(&"io".to_string()));
+        assert!(categories.functions.contains(&"spawn".to_string()));
+        assert!(categories.macros.contains(&"join".to_string()));
+        assert!(categories.core_types.contains(&"JoinHandle".to_string()));
+    }
+
     #[test]
     fn test_extract_version_from_page() {
         let html = r#"
@@ -1285,6 +1488,191 @@ mod tests {
         let document = Html::parse_document(html);
         let version = extract_version_from_page(&document);
         assert_eq!(version, Some("1.35.0".to_string()));
+    }
+
+    #[test]
+    fn test_extract_version_from_fixture() {
+        let html = load_test_html("serde_docs.html");
+        let document = Html::parse_document(&html);
+        let version = extract_version_from_page(&document);
+        assert_eq!(version, Some("1.0.219".to_string()));
+    }
+
+    // Edge case and error handling tests
+    #[test]
+    fn test_parse_empty_crate_documentation() {
+        let html = load_test_html("empty_crate.html");
+        let result = parse_crate_documentation(&html, "empty_crate", &None);
+        
+        assert!(result.is_ok());
+        let docs = result.unwrap();
+        
+        // Verify basic info is still extracted
+        assert_eq!(docs.name, "empty_crate");
+        assert_eq!(docs.version, "0.1.0");
+        
+        // Should have no API items (self-references should be filtered out)
+        assert!(docs.items.is_empty());
+        
+        // All counts should be zero
+        assert_eq!(docs.summary.trait_count, 0);
+        assert_eq!(docs.summary.module_count, 0);
+        assert_eq!(docs.summary.function_count, 0);
+        assert_eq!(docs.summary.struct_count, 0);
+        assert_eq!(docs.summary.enum_count, 0);
+        
+        // Categories should be empty
+        assert!(docs.categories.traits.is_empty());
+        assert!(docs.categories.modules.is_empty());
+        assert!(docs.categories.functions.is_empty());
+        assert!(docs.categories.macros.is_empty());
+        assert!(docs.categories.core_types.is_empty());
+        assert!(docs.categories.constants.is_empty());
+    }
+
+    #[test]
+    fn test_parse_malformed_documentation() {
+        let html = load_test_html("malformed_docs.html");
+        let result = parse_crate_documentation(&html, "malformed_crate", &None);
+        
+        // Should still succeed but filter out malformed items
+        assert!(result.is_ok());
+        let docs = result.unwrap();
+        
+        assert_eq!(docs.name, "malformed_crate");
+        
+        // Should only find valid items, filtering out:
+        // - Items without href
+        // - Items with external links
+        // - Items with JavaScript hrefs
+        // - Empty items
+        let valid_items: Vec<_> = docs.items.iter()
+            .filter(|item| !item.name.is_empty() && !item.path.is_empty())
+            .collect();
+        
+        // Should have at least the ValidTrait
+        assert!(!valid_items.is_empty());
+        
+        // Verify that only valid items are included
+        let valid_item_names: Vec<_> = valid_items.iter().map(|item| &item.name).collect();
+        assert!(valid_item_names.contains(&&"ValidTrait".to_string()));
+        
+        // Should not contain malformed items
+        assert!(!valid_item_names.contains(&&"BrokenTrait".to_string()));
+        assert!(!valid_item_names.contains(&&"JSTrait".to_string()));
+        assert!(!valid_item_names.contains(&&"external_fn".to_string()));
+    }
+
+    #[test]
+    fn test_is_api_item_href_edge_cases() {
+        // Valid API item patterns
+        assert!(is_api_item_href("trait.Serialize.html"));
+        assert!(is_api_item_href("struct.HashMap.html"));
+        assert!(is_api_item_href("de/index.html"));
+        
+        // Invalid patterns that should be filtered
+        assert!(!is_api_item_href("javascript:void(0)"));
+        assert!(!is_api_item_href("https://example.com"));
+        assert!(!is_api_item_href("//external.com"));
+        assert!(!is_api_item_href("#anchor"));
+        assert!(!is_api_item_href("../parent/page.html"));
+        assert!(!is_api_item_href(""));
+        
+        // Edge cases
+        assert!(!is_api_item_href("all.html")); // "All Items" link
+        assert!(!is_api_item_href("help.html")); // Help link
+        assert!(!is_api_item_href("settings.html")); // Settings link
+    }
+
+    #[test]
+    fn test_infer_item_kind_edge_cases() {
+        // Standard cases
+        assert_eq!(infer_item_kind("struct.Foo.html", "Foo"), ItemKind::Struct);
+        assert_eq!(infer_item_kind("trait.Bar.html", "Bar"), ItemKind::Trait);
+        assert_eq!(infer_item_kind("derive.Serialize.html", "Serialize"), ItemKind::Macro);
+        
+        // Edge cases
+        assert_eq!(infer_item_kind("", "unknown"), ItemKind::Function); // Default fallback
+        assert_eq!(infer_item_kind("unknown.html", "test"), ItemKind::Function); // Default fallback
+        assert_eq!(infer_item_kind("some/weird/path", "test"), ItemKind::Function); // Default fallback
+        
+        // Module variations
+        assert_eq!(infer_item_kind("module/index.html", "module"), ItemKind::Module);
+        assert_eq!(infer_item_kind("path/to/module/index.html", "module"), ItemKind::Module);
+    }
+
+    #[test]
+    fn test_extract_nav_item_edge_cases() {
+        let html = r#"
+            <html>
+                <body>
+                    <!-- Empty link text -->
+                    <a href="trait.Empty.html" title="trait test::Empty"></a>
+                    
+                    <!-- No href attribute -->
+                    <a title="trait test::NoHref">NoHref</a>
+                    
+                    <!-- Valid item -->
+                    <a href="trait.Valid.html" title="trait test::Valid">Valid</a>
+                </body>
+            </html>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = Selector::parse("a").unwrap();
+        
+        let items: Vec<_> = document.select(&selector)
+            .filter_map(|element| extract_nav_item(&element))
+            .collect();
+        
+        // Should extract 2 items: one with empty path (NoHref) and one valid (Valid)
+        assert_eq!(items.len(), 2);
+        
+        // Filter to only valid items (non-empty paths)
+        let valid_items: Vec<_> = items.iter().filter(|item| !item.path.is_empty()).collect();
+        assert_eq!(valid_items.len(), 1);
+        assert_eq!(valid_items[0].name, "Valid");
+        assert_eq!(valid_items[0].kind, ItemKind::Trait);
+    }
+
+    #[test]
+    fn test_generate_crate_summary_edge_cases() {
+        // Empty items
+        let empty_summary = generate_crate_summary(&[], None);
+        assert_eq!(empty_summary.module_count, 0);
+        assert_eq!(empty_summary.struct_count, 0);
+        assert_eq!(empty_summary.trait_count, 0);
+        assert_eq!(empty_summary.function_count, 0);
+        assert_eq!(empty_summary.enum_count, 0);
+        assert!(empty_summary.description.is_none());
+        
+        // Mixed items with description
+        let mixed_items = vec![
+            CrateItem {
+                name: "TestStruct".to_string(),
+                kind: ItemKind::Struct,
+                summary: None,
+                path: "struct.TestStruct.html".to_string(),
+                visibility: Visibility::Public,
+                is_async: false,
+                signature: None,
+                docs_path: None,
+            },
+            CrateItem {
+                name: "test_fn".to_string(),
+                kind: ItemKind::Function,
+                summary: None,
+                path: "fn.test_fn.html".to_string(),
+                visibility: Visibility::Public,
+                is_async: true, // Test async function
+                signature: None,
+                docs_path: None,
+            },
+        ];
+        
+        let mixed_summary = generate_crate_summary(&mixed_items, Some("Test description".to_string()));
+        assert_eq!(mixed_summary.struct_count, 1);
+        assert_eq!(mixed_summary.function_count, 1);
+        assert_eq!(mixed_summary.description, Some("Test description".to_string()));
     }
 
     #[test]
@@ -1455,5 +1843,31 @@ mod tests {
 
         let request3 = RecentReleasesRequest::with_limit(150);
         assert_eq!(request3.limit(), 100); // Should be clamped to max
+    }
+
+    #[test]
+    fn test_is_api_item_href() {
+        // Test valid API item hrefs
+        assert!(is_api_item_href("trait.Serialize.html"));
+        assert!(is_api_item_href("struct.HashMap.html"));
+        assert!(is_api_item_href("enum.Option.html"));
+        assert!(is_api_item_href("fn.println.html"));
+        assert!(is_api_item_href("macro.vec.html"));
+        assert!(is_api_item_href("derive.Serialize.html"));
+        assert!(is_api_item_href("constant.PI.html"));
+        assert!(is_api_item_href("type.Result.html"));
+        assert!(is_api_item_href("union.MyUnion.html"));
+        assert!(is_api_item_href("de/index.html"));
+        assert!(is_api_item_href("ser/index.html"));
+
+        // Test invalid hrefs
+        assert!(!is_api_item_href("#data-formats")); // Documentation sections
+        assert!(!is_api_item_href("#design"));
+        assert!(!is_api_item_href("https://example.com"));
+        assert!(!is_api_item_href("//external.com"));
+        assert!(!is_api_item_href("../parent/page.html"));
+        assert!(!is_api_item_href("javascript:void(0)"));
+        assert!(!is_api_item_href(""));
+        assert!(!is_api_item_href("just-text"));
     }
 }

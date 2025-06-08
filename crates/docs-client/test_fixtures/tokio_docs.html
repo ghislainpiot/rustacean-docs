@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="A runtime for writing reliable, asynchronous applications with Rust.">
+    <title>tokio - Rust</title>
+</head>
+<body class="rustdoc mod crate">
+    <nav class="sidebar">
+        <div class="sidebar-crate">
+            <h2><a href="../tokio/index.html">tokio</a><span class="version">1.35.0</span></h2>
+        </div>
+        <div class="sidebar-elems">
+            <ul class="block">
+                <li><a id="all-types" href="all.html">All Items</a></li>
+            </ul>
+            <section>
+                <ul class="block">
+                    <li><a href="#modules">Modules</a></li>
+                    <li><a href="#macros">Macros</a></li>
+                    <li><a href="#structs">Structs</a></li>
+                    <li><a href="#functions">Functions</a></li>
+                </ul>
+            </section>
+        </div>
+    </nav>
+    <main>
+        <div class="width-limiter">
+            <section id="main-content" class="content">
+                <div class="main-heading">
+                    <h1>Crate <a class="mod" href="#">tokio</a></h1>
+                    <span class="out-of-band">
+                        <a class="src" href="../src/tokio/lib.rs.html#1-583">source</a>
+                    </span>
+                </div>
+                <details class="toggle top-doc" open>
+                    <summary class="hideme">
+                        <span>Expand description</span>
+                    </summary>
+                    <div class="docblock">
+                        <p>A runtime for writing reliable, asynchronous applications with Rust.</p>
+                        <p>Tokio provides the building blocks needed for writing networked applications.
+It gives the flexibility to target a wide range of systems, from large servers
+with dozens of cores to small embedded devices.</p>
+                    </div>
+                </details>
+                
+                <h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="mod" href="fs/index.html" title="mod tokio::fs">fs</a></dt>
+                    <dd>Asynchronous file system operations.</dd>
+                    <dt><a class="mod" href="io/index.html" title="mod tokio::io">io</a></dt>
+                    <dd>Traits, helpers, and type definitions for async I/O functionality.</dd>
+                    <dt><a class="mod" href="net/index.html" title="mod tokio::net">net</a></dt>
+                    <dd>TCP/UDP/Unix bindings for tokio.</dd>
+                    <dt><a class="mod" href="runtime/index.html" title="mod tokio::runtime">runtime</a></dt>
+                    <dd>The Tokio runtime.</dd>
+                    <dt><a class="mod" href="sync/index.html" title="mod tokio::sync">sync</a></dt>
+                    <dd>Synchronization primitives for use in async contexts.</dd>
+                    <dt><a class="mod" href="task/index.html" title="mod tokio::task">task</a></dt>
+                    <dd>Asynchronous green-threads.</dd>
+                    <dt><a class="mod" href="time/index.html" title="mod tokio::time">time</a></dt>
+                    <dd>Utilities for tracking time.</dd>
+                </dl>
+                
+                <h2 id="macros" class="section-header">Macros<a href="#macros" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="macro" href="macro.join.html" title="macro tokio::join">join</a></dt>
+                    <dd>Waits on multiple concurrent branches, returning when <strong>all</strong> branches complete.</dd>
+                    <dt><a class="macro" href="macro.pin.html" title="macro tokio::pin">pin</a></dt>
+                    <dd>Pins a value on the stack.</dd>
+                    <dt><a class="macro" href="macro.select.html" title="macro tokio::select">select</a></dt>
+                    <dd>Waits on multiple concurrent branches, returning when the <strong>first</strong> branch completes.</dd>
+                    <dt><a class="macro" href="macro.try_join.html" title="macro tokio::try_join">try_join</a></dt>
+                    <dd>Waits on multiple concurrent branches, returning when <strong>all</strong> branches complete
+with <code>Ok(_)</code> or on the first <code>Err(_)</code>.</dd>
+                </dl>
+                
+                <h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="struct" href="struct.JoinError.html" title="struct tokio::JoinError">JoinError</a></dt>
+                    <dd>Task failed to execute to completion.</dd>
+                    <dt><a class="struct" href="struct.JoinHandle.html" title="struct tokio::JoinHandle">JoinHandle</a></dt>
+                    <dd>An owned permission to join on a task (await its termination).</dd>
+                </dl>
+                
+                <h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="fn" href="fn.spawn.html" title="fn tokio::spawn">spawn</a></dt>
+                    <dd>Spawns a new asynchronous task, returning a <code>JoinHandle</code> for it.</dd>
+                    <dt><a class="fn" href="fn.spawn_blocking.html" title="fn tokio::spawn_blocking">spawn_blocking</a></dt>
+                    <dd>Runs the provided blocking function on the current thread without blocking
+the executor.</dd>
+                </dl>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

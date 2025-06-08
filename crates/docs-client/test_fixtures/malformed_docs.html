@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>malformed_crate - Rust</title>
+</head>
+<body class="rustdoc mod crate">
+    <nav class="sidebar">
+        <div class="sidebar-crate">
+            <h2><a href="../malformed_crate/index.html">malformed_crate</a></h2>
+            <!-- Missing version span -->
+        </div>
+    </nav>
+    <main>
+        <div class="width-limiter">
+            <section id="main-content" class="content">
+                <div class="main-heading">
+                    <h1>Crate <a class="mod" href="#">malformed_crate</a></h1>
+                </div>
+                <!-- Missing description div -->
+                
+                <h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <!-- Malformed entry without href -->
+                    <dt><a class="trait" title="trait malformed_crate::BrokenTrait">BrokenTrait</a></dt>
+                    <dd>A trait without proper href.</dd>
+                    
+                    <!-- Valid entry -->
+                    <dt><a class="trait" href="trait.ValidTrait.html" title="trait malformed_crate::ValidTrait">ValidTrait</a></dt>
+                    <dd>A properly formed trait.</dd>
+                    
+                    <!-- Entry with invalid href -->
+                    <dt><a class="trait" href="javascript:void(0)" title="trait malformed_crate::JSTrait">JSTrait</a></dt>
+                    <dd>A trait with JavaScript href.</dd>
+                </dl>
+                
+                <h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <!-- Empty dt/dd pair -->
+                    <dt></dt>
+                    <dd></dd>
+                    
+                    <!-- Function with external link -->
+                    <dt><a class="fn" href="https://example.com/external" title="fn malformed_crate::external_fn">external_fn</a></dt>
+                    <dd>A function linking to external site.</dd>
+                </dl>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

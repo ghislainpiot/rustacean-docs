@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="Serde is a framework for serializing and deserializing Rust data structures efficiently and generically.">
+    <title>serde - Rust</title>
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2">
+</head>
+<body class="rustdoc mod crate">
+    <nav class="mobile-topbar">
+        <button class="sidebar-menu-toggle" aria-label="show sidebar">☰</button>
+        <a class="logo-container" href="../serde/index.html">
+            <img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="">
+        </a>
+    </nav>
+    <nav class="sidebar">
+        <div class="sidebar-crate">
+            <h2><a href="../serde/index.html">serde</a><span class="version">1.0.219</span></h2>
+        </div>
+        <div class="sidebar-elems">
+            <ul class="block">
+                <li><a id="all-types" href="all.html">All Items</a></li>
+            </ul>
+            <section>
+                <ul class="block">
+                    <li><a href="#modules">Modules</a></li>
+                    <li><a href="#macros">Macros</a></li>
+                    <li><a href="#traits">Traits</a></li>
+                    <li><a href="#derives">Derive Macros</a></li>
+                </ul>
+            </section>
+        </div>
+    </nav>
+    <div class="sidebar-resizer"></div>
+    <main>
+        <div class="width-limiter">
+            <nav class="sub">
+                <form class="search-form">
+                    <span></span>
+                    <div id="sidebar-button" tabindex="-1">
+                        <a href="../serde/all.html" title="show sidebar">☰</a>
+                    </div>
+                    <input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Type 'S' or '/' to search, '?' for more options…" type="search">
+                    <div id="help-button" tabindex="-1">
+                        <a href="../help.html" title="help">?</a>
+                    </div>
+                    <div id="settings-menu" tabindex="-1">
+                        <a href="../settings.html" title="settings">⚙</a>
+                    </div>
+                </form>
+            </nav>
+            <section id="main-content" class="content">
+                <div class="main-heading">
+                    <h1>Crate <a class="mod" href="#">serde</a><button id="copy-path" title="Copy item path to clipboard">📋</button></h1>
+                    <span class="out-of-band">
+                        <a class="src" href="../src/serde/lib.rs.html#1-380">source</a> · 
+                        <button id="toggle-all-docs" title="collapse all docs">[−]</button>
+                    </span>
+                </div>
+                <details class="toggle top-doc" open>
+                    <summary class="hideme">
+                        <span>Expand description</span>
+                    </summary>
+                    <div class="docblock">
+                        <h1 id="serde"><a class="doc-anchor" href="#serde">§</a>Serde</h1>
+                        <p>Serde is a framework for <strong>ser</strong>ializing and <strong>de</strong>serializing Rust data
+structures efficiently and generically.</p>
+                        <p>The Serde ecosystem consists of data structures that know how to serialize
+and deserialize themselves along with data formats that know how to
+serialize and deserialize other things. Serde provides the layer by which
+these two groups interact with each other, allowing any supported data
+structure to be serialized and deserialized using any supported data format.</p>
+                        
+                        <h2 id="design"><a class="doc-anchor" href="#design">§</a>Design</h2>
+                        <p>Where many other languages rely on runtime reflection for serializing data,
+Serde is instead built on Rust's powerful trait system. A data structure
+that knows how to serialize and deserialize itself is one that implements
+Serde's <code>Serialize</code> and <code>Deserialize</code> traits (or uses Serde's derive
+attribute to automatically generate implementations at compile time).</p>
+                        
+                        <h2 id="data-formats"><a class="doc-anchor" href="#data-formats">§</a>Data formats</h2>
+                        <p>The following is a partial list of data formats that have been implemented
+for Serde by the community.</p>
+                        <ul>
+                            <li><a href="https://github.com/serde-rs/json"><strong>JSON</strong></a>, the ubiquitous JavaScript Object Notation used by many HTTP APIs.</li>
+                            <li><a href="https://github.com/jamesmunns/postcard"><strong>Postcard</strong></a>, a no_std and embedded-systems friendly compact binary format.</li>
+                            <li><a href="https://docs.rs/toml"><strong>TOML</strong></a>, a minimal configuration format used by <a href="https://doc.rust-lang.org/cargo/reference/manifest.html">Cargo</a>.</li>
+                        </ul>
+                    </div>
+                </details>
+                
+                <h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="mod" href="de/index.html" title="mod serde::de">de</a></dt>
+                    <dd>Generic data structure deserialization framework.</dd>
+                    <dt><a class="mod" href="ser/index.html" title="mod serde::ser">ser</a></dt>
+                    <dd>Generic data structure serialization framework.</dd>
+                </dl>
+                
+                <h2 id="macros" class="section-header">Macros<a href="#macros" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="macro" href="macro.forward_to_deserialize_any.html" title="macro serde::forward_to_deserialize_any">forward_<wbr>to_<wbr>deserialize_<wbr>any</a></dt>
+                    <dd>Helper macro when implementing the <code>Deserializer</code> part of a new data format
+for Serde.</dd>
+                </dl>
+                
+                <h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="trait" href="trait.Deserialize.html" title="trait serde::Deserialize">Deserialize</a></dt>
+                    <dd>A <strong>data structure</strong> that can be deserialized from any data format supported
+by Serde.</dd>
+                    <dt><a class="trait" href="trait.Deserializer.html" title="trait serde::Deserializer">Deserializer</a></dt>
+                    <dd>A <strong>data format</strong> that can deserialize any data structure supported by
+Serde.</dd>
+                    <dt><a class="trait" href="trait.Serialize.html" title="trait serde::Serialize">Serialize</a></dt>
+                    <dd>A <strong>data structure</strong> that can be serialized into any data format supported
+by Serde.</dd>
+                    <dt><a class="trait" href="trait.Serializer.html" title="trait serde::Serializer">Serializer</a></dt>
+                    <dd>A <strong>data format</strong> that can serialize any data structure supported by Serde.</dd>
+                </dl>
+                
+                <h2 id="derives" class="section-header">Derive Macros<a href="#derives" class="anchor">§</a></h2>
+                <dl class="item-table">
+                    <dt><a class="derive" href="derive.Deserialize.html" title="derive serde::Deserialize">Deserialize</a><wbr><span class="stab portability" title="Available on crate feature `derive` only"><code>derive</code></span></dt>
+                    <dd>Derive macro available if serde is built with <code>features = ["derive"]</code>.</dd>
+                    <dt><a class="derive" href="derive.Serialize.html" title="derive serde::Serialize">Serialize</a><wbr><span class="stab portability" title="Available on crate feature `derive` only"><code>derive</code></span></dt>
+                    <dd>Derive macro available if serde is built with <code>features = ["derive"]</code>.</dd>
+                </dl>
+            </section>
+        </div>
+    </main>
+</body>
+</html>
