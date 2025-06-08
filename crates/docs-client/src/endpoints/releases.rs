@@ -61,12 +61,20 @@ pub struct ReleasesService {
 }
 
 impl ReleasesService {
+    /// Create a new releases service with default cache settings
     pub fn new(client: DocsClient) -> Self {
-        // Create a cache with 100 capacity and 30 minutes TTL (shorter since releases change frequently)
-        let cache = Arc::new(MemoryCache::new(
-            100,
-            Duration::from_secs(1800), // 30 minutes
-        ));
+        Self::with_cache_config(client, 100, Duration::from_secs(1800))
+    }
+
+    /// Create a new releases service with custom cache configuration
+    pub fn with_cache_config(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
+        let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
+
+        debug!(
+            cache_capacity = cache_capacity,
+            cache_ttl_secs = cache_ttl.as_secs(),
+            "Created releases service with cache"
+        );
 
         Self { client, cache }
     }

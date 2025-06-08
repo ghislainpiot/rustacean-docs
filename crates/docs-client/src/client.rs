@@ -37,6 +37,7 @@ impl Default for ClientConfig {
 }
 
 /// HTTP client for interacting with docs.rs and related APIs
+#[derive(Debug, Clone)]
 pub struct DocsClient {
     client: Client,
     config: ClientConfig,

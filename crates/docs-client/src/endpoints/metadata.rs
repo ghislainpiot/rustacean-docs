@@ -134,12 +134,20 @@ pub struct MetadataService {
 }
 
 impl MetadataService {
+    /// Create a new metadata service with default cache settings
     pub fn new(client: DocsClient) -> Self {
-        // Create a cache with 1000 capacity and 1 hour TTL
-        let cache = Arc::new(MemoryCache::new(
-            1000,
-            Duration::from_secs(3600),
-        ));
+        Self::with_cache_config(client, 1000, Duration::from_secs(3600))
+    }
+
+    /// Create a new metadata service with custom cache configuration
+    pub fn with_cache_config(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
+        let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
+
+        debug!(
+            cache_capacity = cache_capacity,
+            cache_ttl_secs = cache_ttl.as_secs(),
+            "Created metadata service with cache"
+        );
 
         Self { client, cache }
     }
