@@ -5,3 +5,9 @@ impl McpServer {
         Self
     }
 }
+
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -1,7 +1,8 @@
-use std::time::{Duration, Instant};
 use lru::LruCache;
 use std::num::NonZeroUsize;
+use std::time::{Duration, Instant};
 
+#[allow(dead_code)]
 pub struct MemoryCache<K, V> {
     cache: LruCache<K, (V, Instant)>,
     ttl: Duration,
