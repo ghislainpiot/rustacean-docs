@@ -1,0 +1,19 @@
+[package]
+name = "rustacean-docs-client"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTP client for accessing Rust documentation APIs"
+
+[dependencies]
+rustacean-docs-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+scraper.workspace = true
+tracing.workspace = true

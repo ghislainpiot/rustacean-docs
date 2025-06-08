@@ -1,0 +1,18 @@
+[package]
+name = "rustacean-docs-cache"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Caching layer for Rustacean Docs MCP server"
+
+[dependencies]
+rustacean-docs-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+lru.workspace = true
+tracing.workspace = true

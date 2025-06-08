@@ -1,0 +1,45 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/docs-client", 
+    "crates/cache",
+    "crates/mcp-server",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-username/rustacean-docs"
+description = "MCP server for Rust documentation access"
+
+[workspace.dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Caching
+lru = "0.12"
+
+# HTML parsing
+scraper = "0.18"
+
+# MCP protocol - using a placeholder since real mcp-sdk may not exist yet
+# mcp-sdk = { version = "0.1", features = ["server"] }
+
+[workspace.dev-dependencies]
+tokio-test = "0.4"
+mockito = "1.2"
+tempfile = "3.8"
+criterion = "0.5"
+tarpaulin = "0.27"
