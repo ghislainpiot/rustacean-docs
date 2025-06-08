@@ -29,7 +29,7 @@ impl ToolHandler for ItemDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<MemoryCache<String, Value>>>,
+        cache: &Arc<RwLock<MemoryCache<String, Value>>>,
     ) -> Result<Value> {
         trace!(params = ?params, "Executing item docs tool");
 
@@ -48,6 +48,35 @@ impl ToolHandler for ItemDocsTool {
             .get("version")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+
+        // Generate cache key
+        let cache_key = format!(
+            "item_docs:{}:{}:{}",
+            crate_name,
+            item_path,
+            version.as_deref().unwrap_or("latest")
+        );
+
+        // Try to get from cache first
+        {
+            let cache_guard = cache.read().await;
+            if let Some(cached_result) = cache_guard.get(&cache_key).await {
+                trace!(
+                    crate_name = %crate_name,
+                    item_path = %item_path,
+                    cache_key = %cache_key,
+                    "Item docs cache hit"
+                );
+                return Ok(cached_result);
+            }
+        }
+
+        trace!(
+            crate_name = %crate_name,
+            item_path = %item_path,
+            cache_key = %cache_key,
+            "Item docs cache miss, fetching from API"
+        );
 
         // Create request
         let request = if let Some(version) = version {
@@ -77,7 +106,7 @@ impl ToolHandler for ItemDocsTool {
         );
 
         // Convert to JSON response
-        Ok(json!({
+        let json_response = json!({
             "crate_name": response.crate_name,
             "item_path": response.item_path,
             "name": response.name,
@@ -92,7 +121,22 @@ impl ToolHandler for ItemDocsTool {
             })).collect::<Vec<_>>(),
             "docs_url": response.docs_url.map(|url| url.to_string()),
             "related_items": response.related_items
-        }))
+        });
+
+        // Store in cache for future requests
+        {
+            let cache_guard = cache.write().await;
+            cache_guard
+                .insert(cache_key.clone(), json_response.clone())
+                .await;
+        }
+
+        trace!(
+            cache_key = %cache_key,
+            "Item docs result cached"
+        );
+
+        Ok(json_response)
     }
 
     fn description(&self) -> &str {

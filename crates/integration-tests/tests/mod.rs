@@ -10,6 +10,7 @@
 
 // Import all integration test modules
 mod cache_integration;
+mod docs_workflow;
 mod full_workflow;
 mod mcp_protocol;
 mod search_flow;
