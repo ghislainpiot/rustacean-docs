@@ -158,6 +158,97 @@ impl ClientFactory {
     }
 }
 
+/// Standard response metadata
+#[derive(Debug, Clone, Serialize)]
+pub struct ResponseMetadata {
+    /// Tool that generated the response
+    pub tool: String,
+    /// Request timestamp
+    pub timestamp: String,
+    /// Whether the response was served from cache
+    pub cached: bool,
+    /// Optional request identifier
+    pub request_id: Option<String>,
+}
+
+impl ResponseMetadata {
+    pub fn new(tool: &str, cached: bool) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        
+        Self {
+            tool: tool.to_string(),
+            timestamp,
+            cached,
+            request_id: None,
+        }
+    }
+
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+}
+
+/// Common response builder for consistent API responses
+pub struct ResponseBuilder;
+
+impl ResponseBuilder {
+    /// Create a success response with data
+    pub fn success<T: Serialize>(data: T) -> Value {
+        serde_json::json!({
+            "data": data
+        })
+    }
+
+    /// Create a success response with data and metadata
+    pub fn success_with_meta<T: Serialize>(data: T, meta: ResponseMetadata) -> Value {
+        serde_json::json!({
+            "data": data,
+            "meta": meta
+        })
+    }
+
+    /// Create a paginated response
+    pub fn paginated<T: Serialize>(
+        items: Vec<T>,
+        total: Option<usize>,
+        page: Option<usize>,
+        limit: Option<usize>,
+    ) -> Value {
+        serde_json::json!({
+            "data": {
+                "items": items,
+                "pagination": {
+                    "total": total,
+                    "returned": items.len(),
+                    "page": page,
+                    "limit": limit
+                }
+            }
+        })
+    }
+
+    /// Create a legacy format response (for backward compatibility)
+    pub fn legacy<T: Serialize>(data: T) -> Value {
+        serde_json::to_value(data).unwrap_or_else(|_| Value::Null)
+    }
+
+    /// Create an error response
+    pub fn error(message: &str, code: Option<&str>) -> Value {
+        serde_json::json!({
+            "error": {
+                "message": message,
+                "code": code
+            }
+        })
+    }
+}
+
 /// Unified cache execution strategy for tools
 pub struct CacheStrategy;
 

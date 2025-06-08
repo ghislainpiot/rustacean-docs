@@ -13,7 +13,7 @@ use rustacean_docs_core::{
     Error,
 };
 
-use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ToolHandler, ToolInput};
+use crate::tools::{CacheConfig, CacheStrategy, ParameterValidator, ResponseBuilder, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -61,27 +61,28 @@ impl SearchTool {
 
     /// Transform SearchResponse to JSON value for MCP protocol
     fn response_to_json(response: SearchResponse) -> Value {
-        serde_json::json!({
-            "results": response.results.iter().map(|result| {
-                serde_json::json!({
-                    "name": result.name,
-                    "version": result.version,
-                    "description": result.description,
-                    "docs_url": result.docs_url,
-                    "download_count": result.download_count,
-                    "last_updated": result.last_updated,
-                    "repository": result.repository,
-                    "homepage": result.homepage,
-                    "keywords": result.keywords,
-                    "categories": result.categories
-                })
-            }).collect::<Vec<_>>(),
-            "total": response.total,
-            "query": {
-                "returned": response.results.len(),
-                "requested": response.results.len()
-            }
-        })
+        let results: Vec<Value> = response.results.iter().map(|result| {
+            serde_json::json!({
+                "name": result.name,
+                "version": result.version,
+                "description": result.description,
+                "docs_url": result.docs_url,
+                "download_count": result.download_count,
+                "last_updated": result.last_updated,
+                "repository": result.repository,
+                "homepage": result.homepage,
+                "keywords": result.keywords,
+                "categories": result.categories
+            })
+        }).collect();
+
+        // Use the response builder for consistent formatting
+        ResponseBuilder::paginated(
+            results,
+            response.total,
+            None, // page not applicable for search
+            Some(response.results.len()),
+        )
     }
 }
 

@@ -8,7 +8,7 @@ use tracing::{debug, error, instrument};
 use rustacean_docs_client::{DocsClient, ReleasesService};
 use rustacean_docs_core::{models::docs::RecentReleasesRequest, Error};
 
-use super::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ServerCache, ToolHandler, ToolInput};
+use super::{CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ResponseBuilder, ServerCache, ToolHandler, ToolInput};
 
 /// Input parameters for the list_recent_releases tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,18 +92,20 @@ impl ToolHandler for RecentReleasesTool {
                             "Successfully retrieved recent releases from crates.io"
                         );
 
-                        // Convert to JSON response
-                        let result = json!({
-                            "releases": response.releases.iter().map(|release| {
-                                json!({
-                                    "name": release.name,
-                                    "version": release.version,
-                                    "description": release.description,
-                                    "published_at": release.published_at.to_rfc3339(),
-                                    "docs_url": release.docs_url.as_ref().map(|u| u.to_string())
-                                })
-                            }).collect::<Vec<_>>()
-                        });
+                        // Convert to JSON response using response builder
+                        let releases_data: Vec<Value> = response.releases.iter().map(|release| {
+                            json!({
+                                "name": release.name,
+                                "version": release.version,
+                                "description": release.description,
+                                "published_at": release.published_at.to_rfc3339(),
+                                "docs_url": release.docs_url.as_ref().map(|u| u.to_string())
+                            })
+                        }).collect();
+
+                        let result = ResponseBuilder::success(json!({
+                            "releases": releases_data
+                        }));
 
                         Ok(result)
                     }
