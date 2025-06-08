@@ -1347,6 +1347,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "mockito",
+ "regex",
  "reqwest",
  "rustacean-docs-cache",
  "rustacean-docs-core",

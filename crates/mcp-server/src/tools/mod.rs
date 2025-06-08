@@ -9,12 +9,14 @@ use rustacean_docs_client::DocsClient;
 pub mod crate_docs;
 pub mod item_docs;
 pub mod metadata;
+pub mod releases;
 pub mod search;
 
 // Re-export tools for convenience
 pub use crate_docs::CrateDocsTool;
 pub use item_docs::ItemDocsTool;
 pub use metadata::{CacheStatsTool, ClearCacheTool, CrateMetadataTool};
+pub use releases::RecentReleasesTool;
 pub use search::SearchTool;
 
 // Type alias for our specific cache implementation

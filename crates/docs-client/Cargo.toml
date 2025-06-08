@@ -25,6 +25,7 @@ tracing.workspace = true
 urlencoding.workspace = true
 chrono.workspace = true
 url.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 mockito = "1.2"
