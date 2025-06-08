@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "HTTP client for accessing Rust documentation APIs"
 
+[features]
+default = []
+integration-tests = []
+
 [dependencies]
 rustacean-docs-core = { path = "../core" }
 serde.workspace = true
@@ -17,3 +21,7 @@ reqwest.workspace = true
 tokio.workspace = true
 scraper.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+mockito = "1.2"
+tokio-test = "0.4"
