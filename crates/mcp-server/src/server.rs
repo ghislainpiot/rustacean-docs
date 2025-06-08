@@ -100,6 +100,13 @@ impl McpServer {
         // Register the item docs tool
         self.register_tool("get_item_docs", Box::new(crate::tools::ItemDocsTool::new()))?;
 
+        // Register the metadata tool
+        self.register_tool("get_crate_metadata", Box::new(crate::tools::CrateMetadataTool::new()))?;
+
+        // Register cache management tools
+        self.register_tool("get_cache_stats", Box::new(crate::tools::CacheStatsTool::new()))?;
+        self.register_tool("clear_cache", Box::new(crate::tools::ClearCacheTool::new()))?;
+
         info!("Registered {} tools", self.tools.len());
         Ok(())
     }
