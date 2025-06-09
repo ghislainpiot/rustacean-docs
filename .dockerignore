@@ -1,0 +1,65 @@
+# Docker build optimization
+# Exclude unnecessary files from build context
+
+# Target directory (build artifacts)
+target/
+**/target/
+
+# Development environment
+.devenv/
+.direnv/
+devenv.lock
+
+# Git
+.git/
+.gitignore
+
+# Documentation and development files
+*.md
+!README.md
+docs/
+MCP_TOOLS_EVALUATION.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test fixtures (not needed in production)
+**/test_fixtures/
+
+# Cache directories
+.cache/
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# Log files
+*.log
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+
+# Coverage reports
+coverage/
+*.profraw
+
+# Backup files
+*.bak
+*.backup
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
