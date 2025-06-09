@@ -271,12 +271,13 @@ impl DocsClient {
 
         // Try to resolve the item path with intelligent fallback
         let resolved_path = resolve_item_path_with_fallback(
-            self, 
-            &request.crate_name, 
-            &request.item_path, 
-            &request.version
-        ).await?;
-        
+            self,
+            &request.crate_name,
+            &request.item_path,
+            &request.version,
+        )
+        .await?;
+
         let path = format!(
             "/{}{version_path}/{}/{resolved_path}",
             request.crate_name, request.crate_name
@@ -1039,7 +1040,7 @@ async fn resolve_item_path_with_fallback(
         crate_name: crate_name.to_string(),
         version: version.clone(),
     };
-    
+
     match client.get_crate_docs(crate_docs_request).await {
         Ok(docs) => {
             // Try to find exact match first
@@ -1048,7 +1049,7 @@ async fn resolve_item_path_with_fallback(
                     return Ok(item.path.clone());
                 }
             }
-            
+
             // Try case-insensitive match
             let lower_item_path = item_path.to_lowercase();
             for item in &docs.items {
@@ -1056,16 +1057,17 @@ async fn resolve_item_path_with_fallback(
                     return Ok(item.path.clone());
                 }
             }
-            
+
             // Try fuzzy matching (partial matches)
             let mut best_matches = Vec::new();
             for item in &docs.items {
-                if item.name.to_lowercase().contains(&lower_item_path) 
-                    || lower_item_path.contains(&item.name.to_lowercase()) {
+                if item.name.to_lowercase().contains(&lower_item_path)
+                    || lower_item_path.contains(&item.name.to_lowercase())
+                {
                     best_matches.push(item);
                 }
             }
-            
+
             // If we found matches, return the best one (exact substring match preferred)
             if !best_matches.is_empty() {
                 // Prefer exact substring matches
@@ -1082,7 +1084,7 @@ async fn resolve_item_path_with_fallback(
             // Fallback to heuristic approach if we can't fetch crate docs
         }
     }
-    
+
     // Last resort: use heuristic approach
     resolve_item_path_heuristic(item_path)
 }
@@ -1091,7 +1093,7 @@ async fn resolve_item_path_with_fallback(
 fn resolve_item_path_heuristic(item_path: &str) -> Result<String> {
     // Generate possible paths to try in order of likelihood
     let possible_paths = generate_possible_item_paths(item_path);
-    
+
     // For now, return the most likely path
     // In a future enhancement, we could try each path until one works
     Ok(possible_paths[0].clone())
@@ -1100,12 +1102,12 @@ fn resolve_item_path_heuristic(item_path: &str) -> Result<String> {
 /// Generate possible item paths for a given name
 fn generate_possible_item_paths(item_name: &str) -> Vec<String> {
     let mut paths = Vec::new();
-    
+
     // If item_name starts with uppercase, it's likely a type
     if item_name.chars().next().is_some_and(|c| c.is_uppercase()) {
         // Order by likelihood for types
-        paths.push(format!("trait.{item_name}.html"));     // Most common for public APIs
-        paths.push(format!("struct.{item_name}.html"));    
+        paths.push(format!("trait.{item_name}.html")); // Most common for public APIs
+        paths.push(format!("struct.{item_name}.html"));
         paths.push(format!("enum.{item_name}.html"));
         paths.push(format!("type.{item_name}.html"));
         paths.push(format!("union.{item_name}.html"));
@@ -1115,13 +1117,13 @@ fn generate_possible_item_paths(item_name: &str) -> Vec<String> {
     } else {
         // Lowercase names are likely functions
         paths.push(format!("fn.{item_name}.html"));
-        paths.push(format!("macro.{item_name}.html"));     // Some macros are lowercase
-        paths.push(format!("constant.{item_name}.html"));  // Constants might be lowercase
-        
+        paths.push(format!("macro.{item_name}.html")); // Some macros are lowercase
+        paths.push(format!("constant.{item_name}.html")); // Constants might be lowercase
+
         // Also try if it might be a module
         paths.push(format!("{item_name}/index.html"));
     }
-    
+
     paths
 }
 

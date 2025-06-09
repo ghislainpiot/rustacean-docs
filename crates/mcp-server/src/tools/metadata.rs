@@ -160,34 +160,10 @@ impl CrateMetadataTool {
         let build_dep_count = metadata.build_dependencies.len();
         let total_deps = dep_count + dev_dep_count + build_dep_count;
 
-        // Analyze dependency patterns
-        let async_deps = metadata
-            .dependencies
-            .iter()
-            .chain(metadata.dev_dependencies.iter())
-            .any(|dep| {
-                dep.name.contains("tokio")
-                    || dep.name.contains("async")
-                    || dep.name.contains("futures")
-            });
-
-        let web_deps = metadata
-            .dependencies
-            .iter()
-            .chain(metadata.dev_dependencies.iter())
-            .any(|dep| {
-                dep.name.contains("reqwest")
-                    || dep.name.contains("hyper")
-                    || dep.name.contains("axum")
-                    || dep.name.contains("warp")
-                    || dep.name.contains("actix")
-            });
-
-        let serde_deps = metadata
-            .dependencies
-            .iter()
-            .chain(metadata.dev_dependencies.iter())
-            .any(|dep| dep.name.contains("serde"));
+        // Analyze dependency patterns and crate characteristics
+        let async_programming = self.detect_async_programming(metadata);
+        let web_framework = self.detect_web_framework(metadata);
+        let serialization = self.detect_serialization(metadata);
 
         // Categorize crate complexity
         let complexity = if total_deps == 0 {
@@ -221,9 +197,9 @@ impl CrateMetadataTool {
                 "build_dependencies": build_dep_count,
                 "complexity": complexity,
                 "patterns": {
-                    "async_programming": async_deps,
-                    "web_framework": web_deps,
-                    "serialization": serde_deps
+                    "async_programming": async_programming,
+                    "web_framework": web_framework,
+                    "serialization": serialization
                 }
             },
             "popularity": {
@@ -239,6 +215,151 @@ impl CrateMetadataTool {
                 "last_updated": metadata.updated_at
             }
         })
+    }
+
+    /// Detect if the crate is related to async programming
+    fn detect_async_programming(&self, metadata: &CrateMetadata) -> bool {
+        // Check crate name
+        if metadata.name.contains("async")
+            || metadata.name == "tokio"
+            || metadata.name.contains("futures")
+        {
+            return true;
+        }
+
+        // Check keywords
+        for keyword in &metadata.keywords {
+            if keyword.contains("async") || keyword.contains("futures") || keyword.contains("tokio")
+            {
+                return true;
+            }
+        }
+
+        // Check categories
+        for category in &metadata.categories {
+            if category.contains("async") || category.contains("concurrency") {
+                return true;
+            }
+        }
+
+        // Check dependencies
+        for dep in &metadata.dependencies {
+            if matches!(
+                dep.name.as_str(),
+                "tokio" | "async-std" | "futures" | "async-trait" | "async-stream"
+            ) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Detect if the crate is a web framework or web-related
+    fn detect_web_framework(&self, metadata: &CrateMetadata) -> bool {
+        // Check crate name
+        if matches!(
+            metadata.name.as_str(),
+            "axum" | "warp" | "actix-web" | "rocket" | "hyper" | "reqwest" | "tide"
+        ) {
+            return true;
+        }
+
+        // Check for common web-related name patterns
+        if metadata.name.contains("http") || metadata.name.contains("web") {
+            return true;
+        }
+
+        // Check keywords
+        for keyword in &metadata.keywords {
+            if matches!(
+                keyword.as_str(),
+                "web" | "http" | "server" | "client" | "api" | "rest" | "framework"
+            ) {
+                return true;
+            }
+        }
+
+        // Check categories
+        for category in &metadata.categories {
+            if matches!(
+                category.as_str(),
+                "web-programming" | "web-programming::http-server" | "web-programming::http-client"
+            ) {
+                return true;
+            }
+        }
+
+        // Check dependencies
+        for dep in &metadata.dependencies {
+            if matches!(
+                dep.name.as_str(),
+                "axum"
+                    | "warp"
+                    | "actix-web"
+                    | "rocket"
+                    | "hyper"
+                    | "reqwest"
+                    | "tide"
+                    | "tower"
+                    | "tower-http"
+            ) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Detect if the crate is related to serialization
+    fn detect_serialization(&self, metadata: &CrateMetadata) -> bool {
+        // Check crate name
+        if matches!(
+            metadata.name.as_str(),
+            "serde" | "bincode" | "rmp" | "toml" | "json" | "yaml" | "cbor"
+        ) {
+            return true;
+        }
+
+        // Check for common serialization name patterns
+        if metadata.name.contains("serde")
+            || metadata.name.contains("json")
+            || metadata.name.contains("yaml")
+        {
+            return true;
+        }
+
+        // Check keywords
+        for keyword in &metadata.keywords {
+            if matches!(
+                keyword.as_str(),
+                "serde" | "serialization" | "json" | "xml" | "yaml" | "toml" | "cbor" | "msgpack"
+            ) {
+                return true;
+            }
+        }
+
+        // Check categories
+        for category in &metadata.categories {
+            if matches!(
+                category.as_str(),
+                "encoding" | "parser-implementations" | "data-structures"
+            ) {
+                return true;
+            }
+        }
+
+        // Check dependencies
+        for dep in &metadata.dependencies {
+            if matches!(
+                dep.name.as_str(),
+                "serde" | "serde_json" | "serde_yaml" | "toml" | "bincode" | "rmp-serde"
+            ) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 

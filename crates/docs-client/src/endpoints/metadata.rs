@@ -40,6 +40,12 @@ struct CratesIoResponse {
     versions: Vec<CratesIoVersion>,
 }
 
+/// Response from the dependencies endpoint
+#[derive(Debug, Deserialize)]
+struct DependenciesResponse {
+    dependencies: Vec<CratesIoDependency>,
+}
+
 /// Crate information from crates.io API
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -217,10 +223,65 @@ impl MetadataService {
             &format!("crates.io metadata for {}", request.crate_name),
         )
         .await?;
-        let crates_io_response: CratesIoResponse =
+        let mut crates_io_response: CratesIoResponse =
             parse_json_response(response, "crates.io metadata").await?;
 
+        // Fetch dependencies separately for the target version
+        let target_version = request
+            .version
+            .as_deref()
+            .unwrap_or(&crates_io_response.crate_info.max_version);
+
+        if let Ok(dependencies) = self
+            .fetch_dependencies(&request.crate_name, target_version)
+            .await
+        {
+            // Find the target version and add the dependencies to it
+            if let Some(version_info) = crates_io_response
+                .versions
+                .iter_mut()
+                .find(|v| v.num == target_version)
+            {
+                version_info.dependencies = Some(dependencies);
+            }
+        }
+
         self.transform_metadata(crates_io_response, request).await
+    }
+
+    async fn fetch_dependencies(
+        &self,
+        crate_name: &str,
+        version: &str,
+    ) -> Result<Vec<CratesIoDependency>, Error> {
+        let url = format!(
+            "https://crates.io/api/v1/crates/{}/{}/dependencies",
+            crate_name, version
+        );
+
+        debug!("Requesting dependencies from: {}", url);
+
+        let response = self
+            .client
+            .inner_client()
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch dependencies from crates.io: {}", e);
+                Error::Network(e)
+            })?;
+
+        let response = handle_http_response(
+            response,
+            &format!("crates.io dependencies for {}:{}", crate_name, version),
+        )
+        .await?;
+
+        let deps_response: DependenciesResponse =
+            parse_json_response(response, "crates.io dependencies").await?;
+
+        Ok(deps_response.dependencies)
     }
 
     async fn transform_metadata(
