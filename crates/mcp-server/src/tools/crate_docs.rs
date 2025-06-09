@@ -490,16 +490,24 @@ mod tests {
     #[cfg(feature = "integration-tests")]
     mod integration_tests {
         use super::*;
+        use rustacean_docs_cache::TieredCache;
         use rustacean_docs_client::DocsClient;
         use serde_json::json;
         use std::time::Duration;
 
         async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
             let client = DocsClient::new().unwrap();
-            let cache = Arc::new(RwLock::new(MemoryCache::new(
-                100,
-                Duration::from_secs(3600),
-            )));
+            let cache = Arc::new(RwLock::new(
+                TieredCache::new(
+                    50,                        // memory capacity
+                    Duration::from_secs(3600), // memory TTL
+                    1024 * 1024,               // disk max size (1MB)
+                    Duration::from_secs(7200), // disk TTL
+                    std::env::temp_dir().join("test_cache_crate_docs"),
+                )
+                .await
+                .unwrap(),
+            ));
             (client, cache)
         }
 
@@ -561,7 +569,7 @@ mod tests {
         #[tokio::test]
         async fn test_crate_docs_tool_cache_behavior() {
             let (client, cache) = create_test_environment().await;
-            let client = Arc::new(client);
+            let _client = Arc::new(client);
 
             // Test cache key generation
             let input = CrateDocsToolInput {
@@ -583,7 +591,7 @@ mod tests {
 
             {
                 let cache_guard = cache.read().await;
-                let cached = cache_guard.get(&cache_key).await;
+                let cached = cache_guard.get(&cache_key).await.unwrap();
                 assert!(cached.is_some());
                 assert_eq!(cached.unwrap(), test_value);
             }

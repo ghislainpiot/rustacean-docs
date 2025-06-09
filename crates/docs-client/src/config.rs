@@ -213,7 +213,7 @@ mod tests {
             .contains(&".crate-description".to_string()));
         assert!(config
             .navigation_selectors
-            .contains(&"nav a[href]".to_string()));
+            .contains(&".item-table dt a[href]".to_string()));
     }
 
     #[test]

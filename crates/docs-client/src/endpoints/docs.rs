@@ -269,8 +269,14 @@ impl DocsClient {
         let actual_version = resolve_version(request.version.clone());
         let version_path = format!("/{actual_version}");
 
-        // Try to resolve the item path - it might be a simple name or a full path
-        let resolved_path = resolve_item_path(&request.item_path);
+        // Try to resolve the item path with intelligent fallback
+        let resolved_path = resolve_item_path_with_fallback(
+            self, 
+            &request.crate_name, 
+            &request.item_path, 
+            &request.version
+        ).await?;
+        
         let path = format!(
             "/{}{version_path}/{}/{resolved_path}",
             request.crate_name, request.crate_name
@@ -446,12 +452,12 @@ fn parse_navigation_items(parser: &HtmlParser) -> Result<Vec<CrateItem>> {
 
     for (text, href) in api_links {
         let mut item = create_crate_item_from_link(text, href.clone());
-        
+
         // Try to find a summary for this item
         if let Some(summary) = summaries.get(&item.name).or_else(|| summaries.get(&href)) {
             item.summary = Some(summary.clone());
         }
-        
+
         trace!(name = %item.name, kind = ?item.kind, path = %item.path, summary = ?item.summary, "Extracted API item");
         items.push(item);
     }
@@ -464,10 +470,12 @@ fn parse_navigation_items(parser: &HtmlParser) -> Result<Vec<CrateItem>> {
 }
 
 /// Extract item summaries from the documentation page
-fn extract_item_summaries_from_page(parser: &HtmlParser) -> std::collections::HashMap<String, String> {
+fn extract_item_summaries_from_page(
+    parser: &HtmlParser,
+) -> std::collections::HashMap<String, String> {
     use scraper::Selector;
     let mut summaries = std::collections::HashMap::new();
-    
+
     // Look for item table entries where dt contains the link and dd contains the description
     let item_table_selector = Selector::parse(".item-table").ok();
     if let Some(selector) = item_table_selector {
@@ -475,17 +483,17 @@ fn extract_item_summaries_from_page(parser: &HtmlParser) -> std::collections::Ha
             // Find dt/dd pairs
             let dt_selector = Selector::parse("dt").unwrap();
             let dd_selector = Selector::parse("dd").unwrap();
-            
+
             let dts: Vec<_> = table.select(&dt_selector).collect();
             let dds: Vec<_> = table.select(&dd_selector).collect();
-            
+
             // Match dt and dd elements
             for (dt, dd) in dts.iter().zip(dds.iter()) {
                 if let Some(link_element) = dt.select(&Selector::parse("a").unwrap()).next() {
                     let name = link_element.text().collect::<String>().trim().to_string();
                     let href = link_element.value().attr("href").unwrap_or("").to_string();
                     let summary = dd.text().collect::<String>().trim().to_string();
-                    
+
                     if !name.is_empty() && !summary.is_empty() {
                         let clean_name = normalize_item_name(&name);
                         summaries.insert(clean_name.clone(), summary.clone());
@@ -495,7 +503,7 @@ fn extract_item_summaries_from_page(parser: &HtmlParser) -> std::collections::Ha
             }
         }
     }
-    
+
     summaries
 }
 
@@ -503,7 +511,7 @@ fn extract_item_summaries_from_page(parser: &HtmlParser) -> std::collections::Ha
 fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
     // Clean up the item name by removing module paths and normalizing text
     let clean_name = normalize_item_name(&name);
-    
+
     // Determine item kind from the link
     let kind = infer_item_kind(&path, &clean_name);
 
@@ -523,14 +531,14 @@ fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
 fn normalize_item_name(name: &str) -> String {
     // Remove leading/trailing whitespace
     let trimmed = name.trim();
-    
+
     // Remove module path prefixes (e.g., "reqwest::Client" -> "Client")
     let without_module = if let Some(last_part) = trimmed.split("::").last() {
         last_part
     } else {
         trimmed
     };
-    
+
     // Remove any remaining unwanted characters and normalize
     let normalized = without_module
         .trim()
@@ -538,7 +546,7 @@ fn normalize_item_name(name: &str) -> String {
         .replace("_\u{200B}", "_") // Clean up word breaks in rustdoc
         .replace("\u{200B}_", "_")
         .replace("wbr", ""); // Remove any leftover wbr tags
-    
+
     // If the name contains description-like text, try to extract just the identifier
     if normalized.contains(' ') && !normalized.starts_with(char::is_uppercase) {
         // This might be a description, try to extract the first word as the identifier
@@ -548,7 +556,7 @@ fn normalize_item_name(name: &str) -> String {
             }
         }
     }
-    
+
     normalized
 }
 
@@ -557,15 +565,15 @@ fn is_valid_rust_identifier(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    
+
     let mut chars = s.chars();
     let first = chars.next().unwrap();
-    
+
     // First character must be alphabetic or underscore
     if !first.is_alphabetic() && first != '_' {
         return false;
     }
-    
+
     // Remaining characters must be alphanumeric or underscore
     chars.all(|c| c.is_alphanumeric() || c == '_')
 }
@@ -1014,22 +1022,107 @@ fn extract_version_from_href(href: &str) -> Option<String> {
     None
 }
 
-/// Resolve item path for different formats
-fn resolve_item_path(item_path: &str) -> String {
+/// Resolve item path for different formats with intelligent fallback
+async fn resolve_item_path_with_fallback(
+    client: &DocsClient,
+    crate_name: &str,
+    item_path: &str,
+    version: &Option<String>,
+) -> Result<String> {
     // If it's already a full path, use as-is
     if item_path.contains('.') && item_path.contains("html") {
-        return item_path.to_string();
+        return Ok(item_path.to_string());
     }
 
-    // If it's a simple name, try to construct a path
-    // This is a simplified heuristic - in practice we'd need more sophisticated resolution
-    if item_path.chars().next().is_some_and(|c| c.is_uppercase()) {
-        // Likely a type (struct, enum, trait)
-        format!("struct.{item_path}.html")
-    } else {
-        // Likely a function
-        format!("fn.{item_path}.html")
+    // If it's a simple name, try to find it by fetching the crate docs first
+    let crate_docs_request = CrateDocsRequest {
+        crate_name: crate_name.to_string(),
+        version: version.clone(),
+    };
+    
+    match client.get_crate_docs(crate_docs_request).await {
+        Ok(docs) => {
+            // Try to find exact match first
+            for item in &docs.items {
+                if item.name == item_path {
+                    return Ok(item.path.clone());
+                }
+            }
+            
+            // Try case-insensitive match
+            let lower_item_path = item_path.to_lowercase();
+            for item in &docs.items {
+                if item.name.to_lowercase() == lower_item_path {
+                    return Ok(item.path.clone());
+                }
+            }
+            
+            // Try fuzzy matching (partial matches)
+            let mut best_matches = Vec::new();
+            for item in &docs.items {
+                if item.name.to_lowercase().contains(&lower_item_path) 
+                    || lower_item_path.contains(&item.name.to_lowercase()) {
+                    best_matches.push(item);
+                }
+            }
+            
+            // If we found matches, return the best one (exact substring match preferred)
+            if !best_matches.is_empty() {
+                // Prefer exact substring matches
+                for item in &best_matches {
+                    if item.name.to_lowercase() == lower_item_path {
+                        return Ok(item.path.clone());
+                    }
+                }
+                // Return first fuzzy match
+                return Ok(best_matches[0].path.clone());
+            }
+        }
+        Err(_) => {
+            // Fallback to heuristic approach if we can't fetch crate docs
+        }
     }
+    
+    // Last resort: use heuristic approach
+    resolve_item_path_heuristic(item_path)
+}
+
+/// Fallback heuristic for resolving item paths
+fn resolve_item_path_heuristic(item_path: &str) -> Result<String> {
+    // Generate possible paths to try in order of likelihood
+    let possible_paths = generate_possible_item_paths(item_path);
+    
+    // For now, return the most likely path
+    // In a future enhancement, we could try each path until one works
+    Ok(possible_paths[0].clone())
+}
+
+/// Generate possible item paths for a given name
+fn generate_possible_item_paths(item_name: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    
+    // If item_name starts with uppercase, it's likely a type
+    if item_name.chars().next().is_some_and(|c| c.is_uppercase()) {
+        // Order by likelihood for types
+        paths.push(format!("trait.{item_name}.html"));     // Most common for public APIs
+        paths.push(format!("struct.{item_name}.html"));    
+        paths.push(format!("enum.{item_name}.html"));
+        paths.push(format!("type.{item_name}.html"));
+        paths.push(format!("union.{item_name}.html"));
+        paths.push(format!("macro.{item_name}.html"));
+        paths.push(format!("derive.{item_name}.html"));
+        paths.push(format!("constant.{item_name}.html"));
+    } else {
+        // Lowercase names are likely functions
+        paths.push(format!("fn.{item_name}.html"));
+        paths.push(format!("macro.{item_name}.html"));     // Some macros are lowercase
+        paths.push(format!("constant.{item_name}.html"));  // Constants might be lowercase
+        
+        // Also try if it might be a module
+        paths.push(format!("{item_name}/index.html"));
+    }
+    
+    paths
 }
 
 #[cfg(test)]
@@ -1124,14 +1217,32 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_item_path() {
-        // Full paths should be preserved
-        assert_eq!(resolve_item_path("struct.Foo.html"), "struct.Foo.html");
-        assert_eq!(resolve_item_path("fn.bar.html"), "fn.bar.html");
+    fn test_generate_possible_item_paths() {
+        // Test uppercase names (likely types)
+        let paths = generate_possible_item_paths("Serialize");
+        assert!(paths.contains(&"trait.Serialize.html".to_string()));
+        assert!(paths.contains(&"struct.Serialize.html".to_string()));
+        assert!(paths[0] == "trait.Serialize.html"); // trait should be first (most likely)
 
-        // Simple names should be resolved
-        assert_eq!(resolve_item_path("Foo"), "struct.Foo.html"); // Uppercase -> struct
-        assert_eq!(resolve_item_path("bar"), "fn.bar.html"); // Lowercase -> function
+        // Test lowercase names (likely functions)
+        let paths = generate_possible_item_paths("spawn");
+        assert!(paths.contains(&"fn.spawn.html".to_string()));
+        assert!(paths.contains(&"macro.spawn.html".to_string()));
+        assert!(paths[0] == "fn.spawn.html"); // function should be first
+
+        // Test module-like names
+        let paths = generate_possible_item_paths("fs");
+        assert!(paths.contains(&"fs/index.html".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_item_path_heuristic() {
+        // Test basic heuristic resolution
+        let result = resolve_item_path_heuristic("Serialize").unwrap();
+        assert_eq!(result, "trait.Serialize.html");
+
+        let result = resolve_item_path_heuristic("spawn").unwrap();
+        assert_eq!(result, "fn.spawn.html");
     }
 
     #[test]
@@ -1584,16 +1695,19 @@ mod tests {
         let html = r#"
             <html>
                 <body>
-                    <nav>
+                    <dl class="item-table">
                         <!-- Empty link text -->
-                        <a href="trait.Empty.html" title="trait test::Empty"></a>
+                        <dt><a href="trait.Empty.html" title="trait test::Empty"></a></dt>
+                        <dd>Empty description</dd>
                         
                         <!-- No href attribute -->
-                        <a title="trait test::NoHref">NoHref</a>
+                        <dt><a title="trait test::NoHref">NoHref</a></dt>
+                        <dd>No href description</dd>
                         
                         <!-- Valid item -->
-                        <a href="trait.Valid.html" title="trait test::Valid">Valid</a>
-                    </nav>
+                        <dt><a href="trait.Valid.html" title="trait test::Valid">Valid</a></dt>
+                        <dd>Valid description</dd>
+                    </dl>
                 </body>
             </html>
         "#;
@@ -1661,9 +1775,11 @@ mod tests {
         let html = r#"
             <html>
                 <body>
-                    <div class="docblock item-decl">
-                        <p>A runtime for writing reliable, asynchronous applications</p>
-                    </div>
+                    <details class="toggle top-doc">
+                        <div class="docblock">
+                            <p>A runtime for writing reliable, asynchronous applications</p>
+                        </div>
+                    </details>
                 </body>
             </html>
         "#;

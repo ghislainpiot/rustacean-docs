@@ -238,7 +238,7 @@ impl HtmlParser {
                 if !trimmed_code.is_empty() {
                     // Create a hash of the code content to detect duplicates
                     let code_hash = Self::hash_code_content(trimmed_code);
-                    
+
                     // Skip if we've already seen this exact code
                     if seen_hashes.contains(&code_hash) {
                         continue;
@@ -269,10 +269,11 @@ impl HtmlParser {
     fn hash_code_content(code: &str) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         // Normalize whitespace for better deduplication
-        let normalized = code.lines()
+        let normalized = code
+            .lines()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
@@ -394,11 +395,14 @@ mod tests {
         let html = r#"
             <html>
                 <body>
-                    <nav>
-                        <a href="struct.Serialize.html">Serialize</a>
-                        <a href="https://external.com">External</a>
-                        <a href="trait.Deserialize.html">Deserialize</a>
-                    </nav>
+                    <dl class="item-table">
+                        <dt><a href="struct.Serialize.html">Serialize</a></dt>
+                        <dd>A trait for serializing data</dd>
+                        <dt><a href="https://external.com">External</a></dt>
+                        <dd>External link</dd>
+                        <dt><a href="trait.Deserialize.html">Deserialize</a></dt>
+                        <dd>A trait for deserializing data</dd>
+                    </dl>
                 </body>
             </html>
         "#;
