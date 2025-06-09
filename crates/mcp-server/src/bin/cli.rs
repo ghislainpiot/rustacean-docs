@@ -2,7 +2,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use rustacean_docs_mcp_server::{Config, RustaceanDocsHandler};
 use serde_json::Value;
-use tracing_subscriber;
 
 #[derive(Parser)]
 #[command(
@@ -137,9 +136,9 @@ async fn run_tool(
         }
         OutputFormat::Raw => {
             if let Some(text) = result.as_str() {
-                println!("{}", text);
+                println!("{text}");
             } else {
-                println!("{}", result);
+                println!("{result}");
             }
         }
     }
@@ -159,11 +158,11 @@ fn show_schema(
             println!("{}", serde_json::to_string(&schema)?);
         }
         OutputFormat::Pretty => {
-            println!("Schema for tool '{}':\n", tool_name);
+            println!("Schema for tool '{tool_name}':\n");
             println!("{}", serde_json::to_string_pretty(&schema)?);
         }
         OutputFormat::Raw => {
-            println!("{}", schema);
+            println!("{schema}");
         }
     }
 

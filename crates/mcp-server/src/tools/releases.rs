@@ -63,7 +63,7 @@ impl ToolHandler for RecentReleasesTool {
 
         // Parse input parameters
         let input: ReleasesToolInput = serde_json::from_value(params.clone())
-            .unwrap_or_else(|_| ReleasesToolInput { limit: None });
+            .unwrap_or(ReleasesToolInput { limit: None });
 
         debug!(
             limit = input.limit,

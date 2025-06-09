@@ -100,7 +100,7 @@ impl ParameterValidator {
             if *limit > max_limit {
                 return Err(Error::invalid_input(
                     tool_name,
-                    &format!("limit cannot exceed {} for performance reasons", max_limit),
+                    format!("limit cannot exceed {max_limit} for performance reasons"),
                 ));
             }
         }
@@ -239,7 +239,7 @@ impl ResponseBuilder {
 
     /// Create a legacy format response (for backward compatibility)
     pub fn legacy<T: Serialize>(data: T) -> Value {
-        serde_json::to_value(data).unwrap_or_else(|_| Value::Null)
+        serde_json::to_value(data).unwrap_or(Value::Null)
     }
 
     /// Create an error response
@@ -259,12 +259,12 @@ pub struct ErrorHandler;
 impl ErrorHandler {
     /// Add context for parameter parsing errors
     pub fn parameter_parsing_context(tool_name: &str) -> String {
-        format!("Invalid input parameters for {}", tool_name)
+        format!("Invalid input parameters for {tool_name}")
     }
 
     /// Add context for API call failures
     pub fn api_call_context(operation: &str, target: &str) -> String {
-        format!("Failed to {} for {}", operation, target)
+        format!("Failed to {operation} for {target}")
     }
 
     /// Add context for crate-specific operations
@@ -275,16 +275,15 @@ impl ErrorHandler {
     ) -> String {
         match version {
             Some(v) => format!(
-                "Failed to {} for crate: {} version: {}",
-                operation, crate_name, v
+                "Failed to {operation} for crate: {crate_name} version: {v}"
             ),
-            None => format!("Failed to {} for crate: {}", operation, crate_name),
+            None => format!("Failed to {operation} for crate: {crate_name}"),
         }
     }
 
     /// Add context for search operations
     pub fn search_context(query: &str) -> String {
-        format!("Failed to search for crates with query: {}", query)
+        format!("Failed to search for crates with query: {query}")
     }
 
     /// Add context for client creation errors
@@ -294,7 +293,7 @@ impl ErrorHandler {
 
     /// Add context for cache operations
     pub fn cache_operation_context(operation: &str, key: &str) -> String {
-        format!("Cache {} failed for key: {}", operation, key)
+        format!("Cache {operation} failed for key: {key}")
     }
 }
 

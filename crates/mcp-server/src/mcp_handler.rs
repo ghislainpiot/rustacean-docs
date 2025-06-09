@@ -291,9 +291,8 @@ impl ServerHandler for RustaceanDocsHandler {
                 Ok(CallToolResult::text_content(
                     serde_json::to_string_pretty(&result).map_err(|e| {
                         error!("Failed to serialize tool result: {}", e);
-                        CallToolError::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Serialization error: {}", e),
+                        CallToolError::new(std::io::Error::other(
+                            format!("Serialization error: {e}"),
                         ))
                     })?,
                     None,
@@ -301,9 +300,8 @@ impl ServerHandler for RustaceanDocsHandler {
             }
             Err(e) => {
                 error!("Tool execution failed for {}: {}", request.params.name, e);
-                Err(CallToolError::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Tool execution error: {}", e),
+                Err(CallToolError::new(std::io::Error::other(
+                    format!("Tool execution error: {e}"),
                 )))
             }
         }
