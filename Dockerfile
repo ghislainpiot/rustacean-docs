@@ -24,5 +24,5 @@ COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/rustacean-docs
 
 USER rustacean
 WORKDIR /app
-EXPOSE 8080
+EXPOSE 8000
 CMD ["rustacean-docs-server"]

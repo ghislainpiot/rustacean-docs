@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
         server_details,
         handler,
         HyperServerOptions {
-            host: "127.0.0.1".to_string(),
+            host: "0.0.0.0".to_string(),
             port: 8000,
             ping_interval: Duration::from_secs(5),
             ..Default::default()
