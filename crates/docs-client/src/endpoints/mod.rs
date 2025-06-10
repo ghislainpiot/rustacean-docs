@@ -1,6 +1,8 @@
 // Module for API endpoints
 
+pub mod common;
 pub mod docs;
+pub mod docs_modules;
 pub mod metadata;
 pub mod releases;
 pub mod search;

@@ -1,7 +1,14 @@
+pub mod docs_parser;
+pub mod path_resolver;
+
 use crate::config::{ApiItemPatterns, HtmlParsingConfig};
 use rustacean_docs_core::models::docs::CodeExample;
 use scraper::{ElementRef, Html, Selector};
 use tracing::trace;
+
+// Re-export the parsing functions for convenience
+pub use docs_parser::{parse_crate_documentation, parse_item_documentation, parse_recent_releases};
+pub use path_resolver::resolve_item_path_with_fallback;
 
 /// Centralized HTML parser utility for docs.rs content
 pub struct HtmlParser {

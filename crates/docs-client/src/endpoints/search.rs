@@ -164,50 +164,58 @@ struct CratesIoCrate {
     versions: Option<serde_json::Value>,
 }
 
+/// Implementation function for search_crates that can be called from client.rs
+pub async fn search_crates_impl(
+    client: &DocsClient,
+    request: SearchRequest,
+) -> Result<SearchResponse> {
+    let limit = request.limit();
+    let query = urlencoding::encode(&request.query);
+
+    // Build the search URL for crates.io API
+    let path = format!("/api/v1/crates?q={query}&per_page={limit}");
+
+    trace!(
+        query = %request.query,
+        limit = limit,
+        path = %path,
+        "Searching crates via crates.io API"
+    );
+
+    // Make the API request using crates.io base URL
+    let crates_io_url = "https://crates.io";
+    let full_url = format!("{crates_io_url}{path}");
+
+    let response = client
+        .inner_client()
+        .get(&full_url)
+        .send()
+        .await
+        .context("Failed to send search request to crates.io")?;
+
+    let response = handle_http_response(response, "crates.io search").await?;
+    let crates_io_response: CratesIoSearchResponse =
+        parse_json_response(response, "crates.io search results").await?;
+
+    debug!(
+        query = %request.query,
+        total_results = crates_io_response.meta.total,
+        returned_results = crates_io_response.crates.len(),
+        "Search completed successfully"
+    );
+
+    // Transform the crates.io response to our internal format
+    let search_results = transform_search_results(crates_io_response.crates)?;
+
+    let response = SearchResponse::with_total(search_results, crates_io_response.meta.total);
+
+    Ok(response)
+}
+
 impl DocsClient {
     /// Search for Rust crates using the crates.io API
     pub async fn search_crates(&self, request: SearchRequest) -> Result<SearchResponse> {
-        let limit = request.limit();
-        let query = urlencoding::encode(&request.query);
-
-        // Build the search URL for crates.io API
-        let path = format!("/api/v1/crates?q={query}&per_page={limit}");
-
-        trace!(
-            query = %request.query,
-            limit = limit,
-            path = %path,
-            "Searching crates via crates.io API"
-        );
-
-        // Make the API request using crates.io base URL
-        let crates_io_url = "https://crates.io";
-        let full_url = format!("{crates_io_url}{path}");
-
-        let response = self
-            .inner_client()
-            .get(&full_url)
-            .send()
-            .await
-            .context("Failed to send search request to crates.io")?;
-
-        let response = handle_http_response(response, "crates.io search").await?;
-        let crates_io_response: CratesIoSearchResponse =
-            parse_json_response(response, "crates.io search results").await?;
-
-        debug!(
-            query = %request.query,
-            total_results = crates_io_response.meta.total,
-            returned_results = crates_io_response.crates.len(),
-            "Search completed successfully"
-        );
-
-        // Transform the crates.io response to our internal format
-        let search_results = transform_search_results(crates_io_response.crates)?;
-
-        let response = SearchResponse::with_total(search_results, crates_io_response.meta.total);
-
-        Ok(response)
+        search_crates_impl(self, request).await
     }
 }
 
