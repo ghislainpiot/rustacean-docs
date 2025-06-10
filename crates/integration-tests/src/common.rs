@@ -9,20 +9,14 @@ type ServerCache = MemoryCache<String, Value>;
 /// Create a test environment with standard settings
 pub async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let cache = Arc::new(RwLock::new(MemoryCache::new(
-        100,
-        Duration::from_secs(3600),
-    )));
+    let cache = Arc::new(RwLock::new(MemoryCache::new(100)));
     (client, cache)
 }
 
 /// Create a test environment with short TTL for expiration testing
 pub async fn create_short_ttl_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
-    let cache = Arc::new(RwLock::new(MemoryCache::new(
-        10,
-        Duration::from_millis(100),
-    )));
+    let cache = Arc::new(RwLock::new(MemoryCache::new(10)));
     (client, cache)
 }
 

@@ -22,7 +22,7 @@
   '';
 
   scripts.claude.exec = ''
-    npx @anthropic-ai/claude-code
+    npx @anthropic-ai/claude-code "$@"
   '';
 
   enterShell = ''

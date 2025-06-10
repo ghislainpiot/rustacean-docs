@@ -313,38 +313,7 @@ mod tests {
         assert_eq!(metadata, deserialized);
     }
 
-    #[test]
-    fn test_cache_layer_stats_serialization() {
-        let stats = CacheLayerStats {
-            size: 500,
-            capacity: 1000,
-            requests: 10000,
-            hits: 8000,
-            misses: 2000,
-            hit_rate: 80.0,
-            bytes_used: Some(1048576),
-            bytes_capacity: Some(10485760),
-        };
 
-        let json = serde_json::to_string(&stats).unwrap();
-        let deserialized: CacheLayerStats = serde_json::from_str(&json).unwrap();
-        assert_eq!(stats, deserialized);
-    }
-
-    #[test]
-    fn test_performance_stats_serialization() {
-        let stats = PerformanceStats {
-            avg_hit_time_ms: 5.2,
-            avg_miss_time_ms: 250.5,
-            avg_population_time_ms: 180.3,
-            evictions: 100,
-            expirations: 50,
-        };
-
-        let json = serde_json::to_string(&stats).unwrap();
-        let deserialized: PerformanceStats = serde_json::from_str(&json).unwrap();
-        assert_eq!(stats, deserialized);
-    }
 
     #[test]
     fn test_cache_config_serialization() {
@@ -364,33 +333,10 @@ mod tests {
     #[test]
     fn test_cache_stats_serialization() {
         let stats = CacheStats {
-            memory: CacheLayerStats {
-                size: 500,
-                capacity: 1000,
-                requests: 10000,
-                hits: 8000,
-                misses: 2000,
-                hit_rate: 80.0,
-                bytes_used: None,
-                bytes_capacity: None,
-            },
-            disk: CacheLayerStats {
-                size: 100,
-                capacity: 1000,
-                requests: 2000,
-                hits: 1800,
-                misses: 200,
-                hit_rate: 90.0,
-                bytes_used: Some(1048576),
-                bytes_capacity: Some(524288000),
-            },
-            performance: PerformanceStats {
-                avg_hit_time_ms: 5.2,
-                avg_miss_time_ms: 250.5,
-                avg_population_time_ms: 180.3,
-                evictions: 100,
-                expirations: 50,
-            },
+            hits: 8000,
+            misses: 2000,
+            size: 500,
+            capacity: 1000,
             config: CacheConfig {
                 memory_capacity: 1000,
                 disk_capacity_bytes: 524288000,
@@ -403,6 +349,10 @@ mod tests {
         let json = serde_json::to_string(&stats).unwrap();
         let deserialized: CacheStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
+        
+        // Test utility methods
+        assert_eq!(stats.hit_rate(), 80.0);
+        assert_eq!(stats.utilization(), 50.0);
     }
 
     #[test]

@@ -5,7 +5,7 @@
 pub mod common;
 
 // Re-export commonly used types for tests
-pub use rustacean_docs_cache::MemoryCache;
+pub use rustacean_docs_cache::{Cache, MemoryCache};
 pub use rustacean_docs_client::DocsClient;
 pub use rustacean_docs_core::models::search::{CrateSearchResult, SearchRequest};
 pub use rustacean_docs_mcp_server::tools::{search::SearchTool, ToolHandler};

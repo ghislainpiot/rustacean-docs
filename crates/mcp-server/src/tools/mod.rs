@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
-use rustacean_docs_cache::TieredCache;
+use rustacean_docs_cache::{Cache, TieredCache};
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::Error;
 
@@ -17,7 +17,7 @@ pub mod releases;
 pub mod search;
 
 // Re-export tools for convenience
-pub use cache_ops::{CacheMaintenanceTool, CacheStatsTool, ClearCacheTool};
+pub use cache_ops::{CacheInfoTool, CacheStatsTool, ClearCacheTool};
 pub use crate_docs::CrateDocsTool;
 pub use item_docs::ItemDocsTool;
 pub use metadata::CrateMetadataTool;

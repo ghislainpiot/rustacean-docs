@@ -27,6 +27,14 @@ impl CacheStats {
             self.hits as f64 / total as f64
         }
     }
+    
+    pub fn utilization(&self) -> f64 {
+        if self.capacity == 0 {
+            0.0
+        } else {
+            (self.size as f64 / self.capacity as f64) * 100.0
+        }
+    }
 }
 
 /// Unified cache trait that all cache implementations follow

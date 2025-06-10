@@ -4,7 +4,7 @@ use crate::{
     error_handling::{build_docs_url, build_item_docs_url},
     html_parser::HtmlParser,
 };
-use rustacean_docs_cache::memory::MemoryCache;
+use rustacean_docs_cache::{Cache, MemoryCache};
 use rustacean_docs_core::{
     models::docs::{
         CrateCategories, CrateDocsRequest, CrateDocsResponse, CrateItem, CrateRelease,
@@ -76,9 +76,9 @@ pub struct DocsService {
 impl DocsService {
     /// Create a new documentation service with cache
     pub fn new(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
-        let crate_docs_cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
-        let item_docs_cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
-        let releases_cache = Arc::new(MemoryCache::new(cache_capacity / 10, cache_ttl / 12)); // Shorter TTL for releases
+        let crate_docs_cache = Arc::new(MemoryCache::new(cache_capacity));
+        let item_docs_cache = Arc::new(MemoryCache::new(cache_capacity));
+        let releases_cache = Arc::new(MemoryCache::new(cache_capacity / 10));
 
         debug!(
             cache_capacity = cache_capacity,
@@ -99,7 +99,7 @@ impl DocsService {
         let cache_key = CrateDocsCacheKey::new(&request);
 
         // Try to get from cache first
-        if let Some(cached_response) = self.crate_docs_cache.get(&cache_key).await {
+        if let Ok(Some(cached_response)) = self.crate_docs_cache.get(&cache_key).await {
             trace!(
                 crate_name = %request.crate_name,
                 version = ?request.version,
@@ -118,7 +118,7 @@ impl DocsService {
         let response = self.client.get_crate_docs(request).await?;
 
         // Store in cache for future requests
-        self.crate_docs_cache
+        let _ = self.crate_docs_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -137,7 +137,7 @@ impl DocsService {
         let cache_key = ItemDocsCacheKey::new(&request);
 
         // Try to get from cache first
-        if let Some(cached_response) = self.item_docs_cache.get(&cache_key).await {
+        if let Ok(Some(cached_response)) = self.item_docs_cache.get(&cache_key).await {
             trace!(
                 crate_name = %request.crate_name,
                 item_path = %request.item_path,
@@ -158,7 +158,7 @@ impl DocsService {
         let response = self.client.get_item_docs(request).await?;
 
         // Store in cache for future requests
-        self.item_docs_cache
+        let _ = self.item_docs_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -179,7 +179,7 @@ impl DocsService {
         let cache_key = RecentReleasesCacheKey::new(&request);
 
         // Try to get from cache first
-        if let Some(cached_response) = self.releases_cache.get(&cache_key).await {
+        if let Ok(Some(cached_response)) = self.releases_cache.get(&cache_key).await {
             trace!(limit = request.limit(), "Recent releases cache hit");
             return Ok(cached_response);
         }
@@ -193,7 +193,7 @@ impl DocsService {
         let response = self.client.get_recent_releases(request).await?;
 
         // Store in cache for future requests
-        self.releases_cache
+        let _ = self.releases_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -206,34 +206,27 @@ impl DocsService {
     }
 
     /// Get cache statistics for all caches
-    pub async fn cache_stats(
+    pub fn cache_stats(
         &self,
     ) -> (
-        rustacean_docs_core::models::metadata::CacheLayerStats,
-        rustacean_docs_core::models::metadata::CacheLayerStats,
-        rustacean_docs_core::models::metadata::CacheLayerStats,
+        rustacean_docs_cache::CacheStats,
+        rustacean_docs_cache::CacheStats,
+        rustacean_docs_cache::CacheStats,
     ) {
-        let crate_stats = self.crate_docs_cache.stats().await;
-        let item_stats = self.item_docs_cache.stats().await;
-        let releases_stats = self.releases_cache.stats().await;
+        let crate_stats = self.crate_docs_cache.stats();
+        let item_stats = self.item_docs_cache.stats();
+        let releases_stats = self.releases_cache.stats();
         (crate_stats, item_stats, releases_stats)
     }
 
     /// Clear all documentation caches
-    pub async fn clear_cache(&self) -> (usize, usize, usize) {
-        let crate_cleared = self.crate_docs_cache.clear().await;
-        let item_cleared = self.item_docs_cache.clear().await;
-        let releases_cleared = self.releases_cache.clear().await;
-        (crate_cleared, item_cleared, releases_cleared)
+    pub async fn clear_cache(&self) -> Result<()> {
+        let _ = self.crate_docs_cache.clear().await;
+        let _ = self.item_docs_cache.clear().await;
+        let _ = self.releases_cache.clear().await;
+        Ok(())
     }
 
-    /// Clean up expired cache entries in all caches
-    pub async fn cleanup_expired(&self) -> (usize, usize, usize) {
-        let crate_expired = self.crate_docs_cache.cleanup_expired().await;
-        let item_expired = self.item_docs_cache.cleanup_expired().await;
-        let releases_expired = self.releases_cache.cleanup_expired().await;
-        (crate_expired, item_expired, releases_expired)
-    }
 }
 
 impl DocsClient {
@@ -1342,7 +1335,7 @@ mod tests {
         let client = DocsClient::new().unwrap();
         let service = DocsService::new(client, 100, Duration::from_secs(3600));
 
-        let (crate_stats, item_stats, releases_stats) = service.cache_stats().await;
+        let (crate_stats, item_stats, releases_stats) = service.cache_stats();
 
         assert_eq!(crate_stats.size, 0);
         assert_eq!(crate_stats.capacity, 100);
@@ -1358,16 +1351,13 @@ mod tests {
         let service = DocsService::new(client, 10, Duration::from_secs(60));
 
         // Test cache clear
-        let (crate_cleared, item_cleared, releases_cleared) = service.clear_cache().await;
-        assert_eq!(crate_cleared, 0); // Empty caches
-        assert_eq!(item_cleared, 0);
-        assert_eq!(releases_cleared, 0);
-
-        // Test cleanup expired
-        let (crate_expired, item_expired, releases_expired) = service.cleanup_expired().await;
-        assert_eq!(crate_expired, 0); // No expired entries
-        assert_eq!(item_expired, 0);
-        assert_eq!(releases_expired, 0);
+        service.clear_cache().await.unwrap();
+        
+        // Verify caches are empty by checking stats
+        let (crate_stats, item_stats, releases_stats) = service.cache_stats();
+        assert_eq!(crate_stats.size, 0);
+        assert_eq!(item_stats.size, 0);
+        assert_eq!(releases_stats.size, 0);
     }
 
     // Tests with pre-downloaded HTML files

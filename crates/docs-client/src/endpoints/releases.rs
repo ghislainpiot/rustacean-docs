@@ -3,7 +3,7 @@ use crate::{
     error_handling::{build_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::{DateTime, Utc};
-use rustacean_docs_cache::memory::MemoryCache;
+use rustacean_docs_cache::{Cache, MemoryCache};
 use rustacean_docs_core::{
     error::Error,
     models::docs::{CrateRelease, RecentReleasesRequest, RecentReleasesResponse},
@@ -72,7 +72,7 @@ impl ReleasesService {
         cache_capacity: usize,
         cache_ttl: Duration,
     ) -> Self {
-        let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
+        let cache = Arc::new(MemoryCache::new(cache_capacity));
 
         debug!(
             cache_capacity = cache_capacity,
@@ -91,7 +91,7 @@ impl ReleasesService {
         let cache_key = ReleasesCacheKey::new(request);
 
         // Try to get from cache first
-        if let Some(cached_response) = self.cache.get(&cache_key).await {
+        if let Ok(Some(cached_response)) = self.cache.get(&cache_key).await {
             trace!(limit = request.limit(), "Recent releases cache hit");
             return Ok(cached_response);
         }
@@ -105,7 +105,7 @@ impl ReleasesService {
         let response = RecentReleasesResponse { releases };
 
         // Store in cache for future requests
-        self.cache.insert(cache_key, response.clone()).await;
+        let _ = self.cache.insert(cache_key, response.clone()).await;
 
         debug!(
             limit = request.limit(),
@@ -187,19 +187,16 @@ impl ReleasesService {
     }
 
     /// Get cache statistics
-    pub async fn cache_stats(&self) -> rustacean_docs_core::CacheLayerStats {
-        self.cache.stats().await
+    pub fn cache_stats(&self) -> rustacean_docs_cache::CacheStats {
+        self.cache.stats()
     }
 
     /// Clear the entire cache
-    pub async fn clear_cache(&self) -> usize {
-        self.cache.clear().await
+    pub async fn clear_cache(&self) -> Result<(), rustacean_docs_core::Error> {
+        let _ = self.cache.clear().await;
+        Ok(())
     }
 
-    /// Clean up expired cache entries
-    pub async fn cleanup_expired(&self) -> usize {
-        self.cache.cleanup_expired().await
-    }
 }
 
 #[cfg(test)]

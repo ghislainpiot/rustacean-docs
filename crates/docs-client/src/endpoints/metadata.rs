@@ -3,7 +3,7 @@ use crate::{
     error_handling::{build_basic_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::Utc;
-use rustacean_docs_cache::memory::MemoryCache;
+use rustacean_docs_cache::{Cache, MemoryCache};
 use rustacean_docs_core::{
     error::Error,
     models::metadata::{
@@ -151,7 +151,7 @@ impl MetadataService {
         cache_capacity: usize,
         cache_ttl: Duration,
     ) -> Self {
-        let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
+        let cache = Arc::new(MemoryCache::new(cache_capacity));
 
         debug!(
             cache_capacity = cache_capacity,
@@ -170,7 +170,7 @@ impl MetadataService {
         let cache_key = MetadataCacheKey::new(request);
 
         // Try to get from cache first
-        if let Some(cached_metadata) = self.cache.get(&cache_key).await {
+        if let Ok(Some(cached_metadata)) = self.cache.get(&cache_key).await {
             trace!(
                 crate_name = %request.crate_name,
                 version = ?request.version,
@@ -188,7 +188,7 @@ impl MetadataService {
         let metadata = self.fetch_metadata_from_api(request).await?;
 
         // Store in cache for future requests
-        self.cache.insert(cache_key, metadata.clone()).await;
+        let _ = self.cache.insert(cache_key, metadata.clone()).await;
 
         debug!(
             crate_name = %request.crate_name,
@@ -435,19 +435,16 @@ impl MetadataService {
     }
 
     /// Get cache statistics
-    pub async fn cache_stats(&self) -> rustacean_docs_core::CacheLayerStats {
-        self.cache.stats().await
+    pub fn cache_stats(&self) -> rustacean_docs_cache::CacheStats {
+        self.cache.stats()
     }
 
     /// Clear the entire cache
-    pub async fn clear_cache(&self) -> usize {
-        self.cache.clear().await
+    pub async fn clear_cache(&self) -> Result<(), rustacean_docs_core::Error> {
+        let _ = self.cache.clear().await;
+        Ok(())
     }
 
-    /// Clean up expired cache entries
-    pub async fn cleanup_expired(&self) -> usize {
-        self.cache.cleanup_expired().await
-    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use super::ToolHandler;
 use anyhow::Result;
-use rustacean_docs_cache::TieredCache;
+use rustacean_docs_cache::{Cache, TieredCache};
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::models::docs::ItemDocsRequest;
 use serde_json::{json, Value};

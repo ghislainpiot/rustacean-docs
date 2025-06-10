@@ -13,12 +13,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
-use rustacean_docs_cache::TieredCache;
+use rustacean_docs_cache::{Cache, MemoryCache, DiskCache, TieredCache, WriteStrategy};
 use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
 use crate::tools::{
-    CacheMaintenanceTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool,
+    CacheInfoTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool,
     ItemDocsTool, RecentReleasesTool, SearchTool, ToolHandler,
 };
 
@@ -51,19 +51,53 @@ impl RustaceanDocsHandler {
             std::fs::create_dir_all(&cache_dir)?;
         }
 
-        let memory_ttl = std::time::Duration::from_secs(config.cache.memory_ttl_secs);
-        let disk_ttl = std::time::Duration::from_secs(config.cache.disk_ttl_secs);
-        let disk_max_size = config.cache.disk_max_size_mb * 1024 * 1024; // Convert MB to bytes
+        let _memory_ttl = std::time::Duration::from_secs(config.cache.memory_ttl_secs);
+        let _disk_ttl = std::time::Duration::from_secs(config.cache.disk_ttl_secs);
+        let _disk_max_size = config.cache.disk_max_size_mb * 1024 * 1024; // Convert MB to bytes
 
+        // Create individual cache layers
+        let memory_cache = MemoryCache::new(config.cache.memory_max_entries);
+        let disk_cache = DiskCache::new(&cache_dir);
+        
+        // Wrap them to match the expected error type
+        struct MemoryCacheWrapper(MemoryCache<String, Value>);
+        
+        #[async_trait::async_trait]
+        impl Cache for MemoryCacheWrapper {
+            type Key = String;
+            type Value = Value;
+            type Error = anyhow::Error;
+            
+            async fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
+                self.0.get(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+            
+            async fn insert(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+                self.0.insert(key, value).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+            
+            async fn remove(&self, key: &Self::Key) -> Result<(), Self::Error> {
+                self.0.remove(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+            
+            async fn clear(&self) -> Result<(), Self::Error> {
+                self.0.clear().await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+            
+            fn stats(&self) -> rustacean_docs_cache::CacheStats {
+                self.0.stats()
+            }
+        }
+        
+        // Create tiered cache with both layers
         let cache = Arc::new(RwLock::new(
             TieredCache::new(
-                config.cache.memory_max_entries,
-                memory_ttl,
-                cache_dir,
-                disk_ttl,
-                disk_max_size,
+                vec![
+                    Box::new(MemoryCacheWrapper(memory_cache)),
+                    Box::new(disk_cache),
+                ],
+                WriteStrategy::WriteThrough,
             )
-            .await?,
         ));
 
         info!(
@@ -130,10 +164,10 @@ impl RustaceanDocsHandler {
                 annotations: None,
             },
             Tool {
-                name: "cache_maintenance".to_string(),
-                description: Some(CacheMaintenanceTool::new().description().to_string()),
+                name: "cache_info".to_string(),
+                description: Some(CacheInfoTool::new().description().to_string()),
                 input_schema: serde_json::from_value(
-                    CacheMaintenanceTool::new().parameters_schema(),
+                    CacheInfoTool::new().parameters_schema(),
                 )
                 .unwrap(),
                 annotations: None,
@@ -176,8 +210,8 @@ impl RustaceanDocsHandler {
                 description: ClearCacheTool::new().description().to_string(),
             },
             ToolInfo {
-                name: "cache_maintenance".to_string(),
-                description: CacheMaintenanceTool::new().description().to_string(),
+                name: "cache_info".to_string(),
+                description: CacheInfoTool::new().description().to_string(),
             },
         ]
     }
@@ -191,7 +225,7 @@ impl RustaceanDocsHandler {
             "list_recent_releases" => RecentReleasesTool::new().parameters_schema(),
             "get_cache_stats" => CacheStatsTool::new().parameters_schema(),
             "clear_cache" => ClearCacheTool::new().parameters_schema(),
-            "cache_maintenance" => CacheMaintenanceTool::new().parameters_schema(),
+            "cache_info" => CacheInfoTool::new().parameters_schema(),
             _ => return Err(anyhow::anyhow!("Unknown tool: {}", tool_name)),
         };
         Ok(schema)
@@ -234,8 +268,8 @@ impl RustaceanDocsHandler {
                     .execute(params, &self.client, &self.cache)
                     .await
             }
-            "cache_maintenance" => {
-                CacheMaintenanceTool::new()
+            "cache_info" => {
+                CacheInfoTool::new()
                     .execute(params, &self.client, &self.cache)
                     .await
             }

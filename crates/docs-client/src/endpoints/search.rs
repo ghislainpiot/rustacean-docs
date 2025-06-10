@@ -3,7 +3,7 @@ use crate::{
     error_handling::{build_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::{DateTime, Utc};
-use rustacean_docs_cache::memory::MemoryCache;
+use rustacean_docs_cache::{Cache, MemoryCache};
 use rustacean_docs_core::{
     error::ErrorContext,
     models::search::{CrateSearchResult, SearchRequest, SearchResponse},
@@ -56,7 +56,7 @@ pub struct SearchService {
 impl SearchService {
     /// Create a new search service with cache
     pub fn new(client: DocsClient, cache_capacity: usize, cache_ttl: Duration) -> Self {
-        let cache = Arc::new(MemoryCache::new(cache_capacity, cache_ttl));
+        let cache = Arc::new(MemoryCache::new(cache_capacity));
 
         debug!(
             cache_capacity = cache_capacity,
@@ -72,7 +72,7 @@ impl SearchService {
         let cache_key = SearchCacheKey::new(&request);
 
         // Try to get from cache first
-        if let Some(cached_response) = self.cache.get(&cache_key).await {
+        if let Ok(Some(cached_response)) = self.cache.get(&cache_key).await {
             trace!(
                 query = %request.query,
                 limit = request.limit(),
@@ -91,7 +91,7 @@ impl SearchService {
         let response = self.client.search_crates(request).await?;
 
         // Store in cache for future requests
-        self.cache.insert(cache_key, response.clone()).await;
+        let _ = self.cache.insert(cache_key, response.clone()).await;
 
         debug!(
             query = %response.results.first().map(|r| &r.name).unwrap_or(&"none".to_string()),
@@ -104,19 +104,16 @@ impl SearchService {
     }
 
     /// Get cache statistics
-    pub async fn cache_stats(&self) -> rustacean_docs_core::models::metadata::CacheLayerStats {
-        self.cache.stats().await
+    pub fn cache_stats(&self) -> rustacean_docs_cache::CacheStats {
+        self.cache.stats()
     }
 
     /// Clear the search cache
-    pub async fn clear_cache(&self) -> usize {
-        self.cache.clear().await
+    pub async fn clear_cache(&self) -> Result<()> {
+        let _ = self.cache.clear().await;
+        Ok(())
     }
 
-    /// Clean up expired cache entries
-    pub async fn cleanup_expired(&self) -> usize {
-        self.cache.cleanup_expired().await
-    }
 }
 
 /// Individual crate data from crates.io API
@@ -509,10 +506,9 @@ mod tests {
         let client = DocsClient::new().unwrap();
         let service = SearchService::new(client, 100, Duration::from_secs(300));
 
-        let stats = service.cache_stats().await;
+        let stats = service.cache_stats();
         assert_eq!(stats.size, 0);
         assert_eq!(stats.capacity, 100);
-        assert_eq!(stats.requests, 0);
         assert_eq!(stats.hits, 0);
         assert_eq!(stats.misses, 0);
     }
@@ -523,14 +519,13 @@ mod tests {
         let service = SearchService::new(client, 10, Duration::from_secs(60));
 
         // Test cache clear
-        let cleared = service.clear_cache().await;
-        assert_eq!(cleared, 0); // Empty cache
+        service.clear_cache().await.unwrap();
+        
+        // Verify cache is empty
+        let stats = service.cache_stats();
+        assert_eq!(stats.size, 0);
 
-        // Test cleanup expired
-        let expired = service.cleanup_expired().await;
-        assert_eq!(expired, 0); // No expired entries
-
-        let stats = service.cache_stats().await;
+        let stats = service.cache_stats();
         assert_eq!(stats.size, 0);
     }
 
