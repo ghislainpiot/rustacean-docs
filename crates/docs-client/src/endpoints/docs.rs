@@ -118,7 +118,8 @@ impl DocsService {
         let response = self.client.get_crate_docs(request).await?;
 
         // Store in cache for future requests
-        let _ = self.crate_docs_cache
+        let _ = self
+            .crate_docs_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -158,7 +159,8 @@ impl DocsService {
         let response = self.client.get_item_docs(request).await?;
 
         // Store in cache for future requests
-        let _ = self.item_docs_cache
+        let _ = self
+            .item_docs_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -193,7 +195,8 @@ impl DocsService {
         let response = self.client.get_recent_releases(request).await?;
 
         // Store in cache for future requests
-        let _ = self.releases_cache
+        let _ = self
+            .releases_cache
             .insert(cache_key, response.clone())
             .await;
 
@@ -226,7 +229,6 @@ impl DocsService {
         let _ = self.releases_cache.clear().await;
         Ok(())
     }
-
 }
 
 impl DocsClient {
@@ -1352,7 +1354,7 @@ mod tests {
 
         // Test cache clear
         service.clear_cache().await.unwrap();
-        
+
         // Verify caches are empty by checking stats
         let (crate_stats, item_stats, releases_stats) = service.cache_stats();
         assert_eq!(crate_stats.size, 0);

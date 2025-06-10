@@ -274,9 +274,7 @@ impl ErrorHandler {
         version: Option<&str>,
     ) -> String {
         match version {
-            Some(v) => format!(
-                "Failed to {operation} for crate: {crate_name} version: {v}"
-            ),
+            Some(v) => format!("Failed to {operation} for crate: {crate_name} version: {v}"),
             None => format!("Failed to {operation} for crate: {crate_name}"),
         }
     }

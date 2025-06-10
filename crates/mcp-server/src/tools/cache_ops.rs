@@ -70,11 +70,11 @@ impl CacheStatsTool {
     fn get_efficiency_analysis(&self, stats: &CacheStats) -> Value {
         let hit_rate = stats.hit_rate();
         let utilization = stats.utilization();
-        
+
         json!({
             "hit_rate_category": match hit_rate {
                 rate if rate >= 80.0 => "excellent",
-                rate if rate >= 60.0 => "good", 
+                rate if rate >= 60.0 => "good",
                 rate if rate >= 40.0 => "moderate",
                 _ => "poor"
             },
@@ -93,25 +93,25 @@ impl CacheStatsTool {
         let mut recommendations = Vec::new();
         let hit_rate = stats.hit_rate();
         let utilization = stats.utilization();
-        
+
         if hit_rate < 50.0 {
             recommendations.push("Consider implementing smarter caching strategies");
         }
-        
+
         if utilization > 95.0 {
             recommendations.push("Cache is near capacity - consider increasing size");
         } else if utilization < 20.0 && stats.size > 0 {
             recommendations.push("Cache utilization is low - consider reducing size");
         }
-        
+
         if stats.hits + stats.misses < 100 {
             recommendations.push("Cache needs more usage to provide meaningful statistics");
         }
-        
+
         if recommendations.is_empty() {
             recommendations.push("Cache performance is optimal");
         }
-        
+
         recommendations
     }
 }
@@ -182,9 +182,9 @@ impl ToolHandler for ClearCacheTool {
 
         let cache_guard = cache.write().await;
         let stats_before = cache_guard.stats();
-        
+
         cache_guard.clear().await?;
-        
+
         let _stats_after = cache_guard.stats();
         drop(cache_guard);
 

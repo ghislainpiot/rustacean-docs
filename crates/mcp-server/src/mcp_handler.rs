@@ -13,13 +13,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
-use rustacean_docs_cache::{Cache, MemoryCache, DiskCache, TieredCache, WriteStrategy};
+use rustacean_docs_cache::{Cache, DiskCache, MemoryCache, TieredCache, WriteStrategy};
 use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
 use crate::tools::{
-    CacheInfoTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool,
-    ItemDocsTool, RecentReleasesTool, SearchTool, ToolHandler,
+    CacheInfoTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool, ItemDocsTool,
+    RecentReleasesTool, SearchTool, ToolHandler,
 };
 
 type ServerCache = TieredCache<String, Value>;
@@ -58,47 +58,57 @@ impl RustaceanDocsHandler {
         // Create individual cache layers
         let memory_cache = MemoryCache::new(config.cache.memory_max_entries);
         let disk_cache = DiskCache::new(&cache_dir);
-        
+
         // Wrap them to match the expected error type
         struct MemoryCacheWrapper(MemoryCache<String, Value>);
-        
+
         #[async_trait::async_trait]
         impl Cache for MemoryCacheWrapper {
             type Key = String;
             type Value = Value;
             type Error = anyhow::Error;
-            
+
             async fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
-                self.0.get(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .get(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn insert(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-                self.0.insert(key, value).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .insert(key, value)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn remove(&self, key: &Self::Key) -> Result<(), Self::Error> {
-                self.0.remove(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .remove(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn clear(&self) -> Result<(), Self::Error> {
-                self.0.clear().await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .clear()
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             fn stats(&self) -> rustacean_docs_cache::CacheStats {
                 self.0.stats()
             }
         }
-        
+
         // Create tiered cache with both layers
-        let cache = Arc::new(RwLock::new(
-            TieredCache::new(
-                vec![
-                    Box::new(MemoryCacheWrapper(memory_cache)),
-                    Box::new(disk_cache),
-                ],
-                WriteStrategy::WriteThrough,
-            )
-        ));
+        let cache = Arc::new(RwLock::new(TieredCache::new(
+            vec![
+                Box::new(MemoryCacheWrapper(memory_cache)),
+                Box::new(disk_cache),
+            ],
+            WriteStrategy::WriteThrough,
+        )));
 
         info!(
             "Initialized Rustacean Docs MCP Handler: {} v{}",
@@ -166,10 +176,8 @@ impl RustaceanDocsHandler {
             Tool {
                 name: "cache_info".to_string(),
                 description: Some(CacheInfoTool::new().description().to_string()),
-                input_schema: serde_json::from_value(
-                    CacheInfoTool::new().parameters_schema(),
-                )
-                .unwrap(),
+                input_schema: serde_json::from_value(CacheInfoTool::new().parameters_schema())
+                    .unwrap(),
                 annotations: None,
             },
         ]
@@ -325,18 +333,18 @@ impl ServerHandler for RustaceanDocsHandler {
                 Ok(CallToolResult::text_content(
                     serde_json::to_string_pretty(&result).map_err(|e| {
                         error!("Failed to serialize tool result: {}", e);
-                        CallToolError::new(std::io::Error::other(
-                            format!("Serialization error: {e}"),
-                        ))
+                        CallToolError::new(std::io::Error::other(format!(
+                            "Serialization error: {e}"
+                        )))
                     })?,
                     None,
                 ))
             }
             Err(e) => {
                 error!("Tool execution failed for {}: {}", request.params.name, e);
-                Err(CallToolError::new(std::io::Error::other(
-                    format!("Tool execution error: {e}"),
-                )))
+                Err(CallToolError::new(std::io::Error::other(format!(
+                    "Tool execution error: {e}"
+                ))))
             }
         }
     }

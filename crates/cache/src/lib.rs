@@ -27,7 +27,7 @@ impl CacheStats {
             self.hits as f64 / total as f64
         }
     }
-    
+
     pub fn utilization(&self) -> f64 {
         if self.capacity == 0 {
             0.0

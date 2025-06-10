@@ -113,7 +113,6 @@ impl SearchService {
         let _ = self.cache.clear().await;
         Ok(())
     }
-
 }
 
 /// Individual crate data from crates.io API
@@ -520,7 +519,7 @@ mod tests {
 
         // Test cache clear
         service.clear_cache().await.unwrap();
-        
+
         // Verify cache is empty
         let stats = service.cache_stats();
         assert_eq!(stats.size, 0);

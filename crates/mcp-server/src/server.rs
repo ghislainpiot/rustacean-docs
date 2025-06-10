@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use rustacean_docs_cache::{Cache, MemoryCache, DiskCache, TieredCache, WriteStrategy};
+use rustacean_docs_cache::{Cache, DiskCache, MemoryCache, TieredCache, WriteStrategy};
 use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
@@ -66,47 +66,57 @@ impl McpServer {
         // Create individual cache layers
         let memory_cache = MemoryCache::new(config.cache.memory_max_entries);
         let disk_cache = DiskCache::new(&cache_dir);
-        
+
         // Wrap memory cache to match error type
         struct MemoryCacheWrapper(MemoryCache<String, Value>);
-        
+
         #[async_trait]
         impl Cache for MemoryCacheWrapper {
             type Key = String;
             type Value = Value;
             type Error = anyhow::Error;
-            
+
             async fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
-                self.0.get(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .get(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn insert(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-                self.0.insert(key, value).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .insert(key, value)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn remove(&self, key: &Self::Key) -> Result<(), Self::Error> {
-                self.0.remove(key).await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .remove(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             async fn clear(&self) -> Result<(), Self::Error> {
-                self.0.clear().await.map_err(|_| anyhow::anyhow!("Memory cache error"))
+                self.0
+                    .clear()
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
             }
-            
+
             fn stats(&self) -> rustacean_docs_cache::CacheStats {
                 self.0.stats()
             }
         }
-        
+
         // Create tiered cache
-        let cache = Arc::new(RwLock::new(
-            TieredCache::new(
-                vec![
-                    Box::new(MemoryCacheWrapper(memory_cache)),
-                    Box::new(disk_cache),
-                ],
-                WriteStrategy::WriteThrough,
-            )
-        ));
+        let cache = Arc::new(RwLock::new(TieredCache::new(
+            vec![
+                Box::new(MemoryCacheWrapper(memory_cache)),
+                Box::new(disk_cache),
+            ],
+            WriteStrategy::WriteThrough,
+        )));
 
         let mut server = Self {
             tools: HashMap::new(),
@@ -172,10 +182,7 @@ impl McpServer {
             Box::new(crate::tools::CacheStatsTool::new()),
         )?;
         self.register_tool("clear_cache", Box::new(crate::tools::ClearCacheTool::new()))?;
-        self.register_tool(
-            "cache_info",
-            Box::new(crate::tools::CacheInfoTool::new()),
-        )?;
+        self.register_tool("cache_info", Box::new(crate::tools::CacheInfoTool::new()))?;
 
         info!("Registered {} tools", self.tools.len());
         Ok(())

@@ -89,10 +89,7 @@ where
 
     fn stats(&self) -> CacheStats {
         // Use try_read to avoid potential deadlock in stats() call
-        self.stats
-            .try_read()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.stats.try_read().map(|s| s.clone()).unwrap_or_default()
     }
 }
 
@@ -105,7 +102,10 @@ mod tests {
         let cache = MemoryCache::<String, String>::new(10);
 
         // Test insert and get
-        cache.insert("key1".to_string(), "value1".to_string()).await.unwrap();
+        cache
+            .insert("key1".to_string(), "value1".to_string())
+            .await
+            .unwrap();
         let result = cache.get(&"key1".to_string()).await.unwrap();
         assert_eq!(result, Some("value1".to_string()));
 
@@ -156,7 +156,10 @@ mod tests {
 
         // Add some items
         for i in 0..5 {
-            cache.insert(format!("key{}", i), format!("value{}", i)).await.unwrap();
+            cache
+                .insert(format!("key{}", i), format!("value{}", i))
+                .await
+                .unwrap();
         }
 
         let stats = cache.stats();

@@ -4,13 +4,13 @@
 //! through client API calls to cache integration.
 
 use chrono::Utc;
-use rustacean_docs_cache::TieredCache;
+use integration_tests::common::create_tiered_cache;
+use rustacean_docs_cache::{Cache, TieredCache};
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::models::search::CrateSearchResult;
 use rustacean_docs_mcp_server::tools::{search::SearchTool, ToolHandler};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 use url::Url;
 
@@ -21,17 +21,7 @@ async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
     let client = DocsClient::new().expect("Failed to create DocsClient");
     let temp_dir =
         std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
-    let cache = Arc::new(RwLock::new(
-        TieredCache::new(
-            100,
-            Duration::from_secs(3600),
-            temp_dir,
-            Duration::from_secs(7200), // 2 hours disk TTL
-            50 * 1024 * 1024,          // 50MB disk cache
-        )
-        .await
-        .expect("Failed to create TieredCache"),
-    ));
+    let cache = Arc::new(RwLock::new(create_tiered_cache(100, &temp_dir)));
     (client, cache)
 }
 
@@ -141,15 +131,8 @@ async fn test_search_cache_integration() {
     // First, verify cache is empty
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats");
-        assert_eq!(
-            stats.memory.size + stats.disk.size,
-            0,
-            "Cache should start empty"
-        );
+        let stats = cache_guard.stats();
+        assert_eq!(stats.size, 0, "Cache should start empty");
     }
 
     // Test cache key generation
@@ -240,11 +223,8 @@ async fn test_search_tool_cache_hit_scenario() {
     // Verify cache statistics
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats");
-        assert!(stats.total_hits > 0, "Should have cache hits");
+        let stats = cache_guard.stats();
+        assert!(stats.hits > 0, "Should have cache hits");
     }
 }
 
@@ -257,12 +237,9 @@ async fn test_search_tool_cache_miss_scenario() {
     // Verify cache starts empty
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats");
-        assert_eq!(stats.memory.size + stats.disk.size, 0);
-        assert_eq!(stats.total_misses, 0);
+        let stats = cache_guard.stats();
+        assert_eq!(stats.size, 0);
+        assert_eq!(stats.misses, 0);
     }
 
     // Try to search for something not in cache
@@ -276,12 +253,9 @@ async fn test_search_tool_cache_miss_scenario() {
     // Verify cache miss was recorded (regardless of whether the network call succeeded)
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats");
+        let stats = cache_guard.stats();
         assert!(
-            stats.total_requests > 0,
+            stats.hits + stats.misses > 0,
             "Should have recorded cache requests"
         );
     }
@@ -333,14 +307,10 @@ async fn test_search_tool_multiple_queries_different_cache_keys() {
     // Verify all entries are in cache
     {
         let cache_guard = cache.read().await;
-        let stats = cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats");
+        let stats = cache_guard.stats();
         assert_eq!(
-            stats.memory.size + stats.disk.size,
-            6,
-            "Should have 3 different cached entries (stored in both memory and disk)"
+            stats.size, 6,
+            "Should have 6 total cached entries (3 in memory + 3 in disk)"
         );
     }
 }

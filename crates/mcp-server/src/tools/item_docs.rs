@@ -171,6 +171,7 @@ impl ToolHandler for ItemDocsTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
 
     async fn create_test_cache() -> Arc<RwLock<TieredCache<String, Value>>> {
         let temp_dir = std::env::temp_dir().join("item_docs_test_cache");
@@ -179,15 +180,59 @@ mod tests {
         }
         std::fs::create_dir_all(&temp_dir).unwrap();
 
+        // Create individual cache layers
+        let memory_cache = rustacean_docs_cache::MemoryCache::new(10);
+        let disk_cache = rustacean_docs_cache::DiskCache::new(&temp_dir);
+
+        // Wrap memory cache to match error type
+        struct MemoryCacheWrapper(rustacean_docs_cache::MemoryCache<String, Value>);
+
+        #[async_trait::async_trait]
+        impl rustacean_docs_cache::Cache for MemoryCacheWrapper {
+            type Key = String;
+            type Value = Value;
+            type Error = anyhow::Error;
+
+            async fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
+                self.0
+                    .get(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+
+            async fn insert(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+                self.0
+                    .insert(key, value)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+
+            async fn remove(&self, key: &Self::Key) -> Result<(), Self::Error> {
+                self.0
+                    .remove(key)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+
+            async fn clear(&self) -> Result<(), Self::Error> {
+                self.0
+                    .clear()
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Memory cache error"))
+            }
+
+            fn stats(&self) -> rustacean_docs_cache::CacheStats {
+                self.0.stats()
+            }
+        }
+
         let cache = TieredCache::new(
-            10,
-            std::time::Duration::from_secs(60),
-            temp_dir,
-            std::time::Duration::from_secs(3600),
-            1024 * 1024,
-        )
-        .await
-        .unwrap();
+            vec![
+                Box::new(MemoryCacheWrapper(memory_cache)),
+                Box::new(disk_cache),
+            ],
+            rustacean_docs_cache::WriteStrategy::WriteThrough,
+        );
         Arc::new(RwLock::new(cache))
     }
 

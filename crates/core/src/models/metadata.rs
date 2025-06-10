@@ -313,8 +313,6 @@ mod tests {
         assert_eq!(metadata, deserialized);
     }
 
-
-
     #[test]
     fn test_cache_config_serialization() {
         let config = CacheConfig {
@@ -349,7 +347,7 @@ mod tests {
         let json = serde_json::to_string(&stats).unwrap();
         let deserialized: CacheStats = serde_json::from_str(&json).unwrap();
         assert_eq!(stats, deserialized);
-        
+
         // Test utility methods
         assert_eq!(stats.hit_rate(), 80.0);
         assert_eq!(stats.utilization(), 50.0);

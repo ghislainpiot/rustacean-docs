@@ -50,14 +50,17 @@ where
         match cacache::read(&self.cache_dir, &key_str).await {
             Ok(data) => {
                 stats.hits += 1;
-                let value: V = serde_json::from_slice(&data)
-                    .context("Failed to deserialize cached value")?;
+                let value: V =
+                    serde_json::from_slice(&data).context("Failed to deserialize cached value")?;
                 Ok(Some(value))
             }
             Err(e) => {
                 // Check if it's a not found error by examining the error message
                 let error_str = e.to_string();
-                if error_str.contains("not found") || error_str.contains("NotFound") || error_str.contains("Entry not found") {
+                if error_str.contains("not found")
+                    || error_str.contains("NotFound")
+                    || error_str.contains("Entry not found")
+                {
                     stats.misses += 1;
                     Ok(None)
                 } else {
@@ -110,10 +113,7 @@ where
     }
 
     fn stats(&self) -> CacheStats {
-        self.stats
-            .try_read()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.stats.try_read().map(|s| s.clone()).unwrap_or_default()
     }
 }
 

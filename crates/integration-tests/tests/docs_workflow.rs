@@ -3,14 +3,14 @@
 //! Tests the complete documentation retrieval and caching workflow,
 //! including crate docs, item docs, and version-specific requests.
 
-use rustacean_docs_cache::TieredCache;
+use integration_tests::common::create_tiered_cache;
+use rustacean_docs_cache::{Cache, TieredCache};
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_mcp_server::tools::{
     crate_docs::CrateDocsTool, item_docs::ItemDocsTool, ToolHandler,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -21,18 +21,8 @@ async fn create_docs_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>
     let client = DocsClient::new().expect("Failed to create DocsClient");
     let temp_dir =
         std::env::temp_dir().join(format!("rustacean_docs_test_{}", rand::random::<u64>()));
-    // Documentation cache: 500 entries, 2 hour TTL
-    let cache = Arc::new(RwLock::new(
-        TieredCache::new(
-            500,
-            Duration::from_secs(7200),
-            temp_dir,
-            Duration::from_secs(14400), // 4 hours disk TTL
-            100 * 1024 * 1024,          // 100MB disk cache
-        )
-        .await
-        .expect("Failed to create TieredCache"),
-    ));
+    // Documentation cache: 500 entries
+    let cache = Arc::new(RwLock::new(create_tiered_cache(500, &temp_dir)));
     (client, cache)
 }
 
@@ -197,19 +187,12 @@ async fn test_crate_docs_integration() {
     // Verify cache statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
-    assert!(
-        cache_stats.total_hits >= 2,
-        "Should have multiple cache hits"
-    );
+    assert!(cache_stats.hits >= 2, "Should have multiple cache hits");
     assert_eq!(
-        cache_stats.memory.size + cache_stats.disk.size,
-        4,
+        cache_stats.size, 4,
         "Should have 2 cached entries (stored in both memory and disk)"
     );
 }
@@ -278,16 +261,10 @@ async fn test_item_docs_integration() {
     // Verify cache contains all items
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
-    assert!(
-        final_stats.memory.size + final_stats.disk.size >= 5,
-        "Should have cached multiple items"
-    );
+    assert!(final_stats.size >= 5, "Should have cached multiple items");
 }
 
 #[tokio::test]
@@ -362,14 +339,11 @@ async fn test_version_specific_docs() {
     // Verify each version creates separate cache entries
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
     assert_eq!(
-        cache_stats.memory.size + cache_stats.disk.size,
+        cache_stats.size,
         versions.len() * 2 * 2, // Both crate and item docs for each version, stored in both memory and disk
         "Should have separate cache entries for each version"
     );
@@ -419,19 +393,15 @@ async fn test_docs_cache_behavior() {
     // Verify cache hit statistics
     let cache_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
     assert!(
-        cache_stats.total_hits >= request_count as u64,
+        cache_stats.hits >= request_count as u64,
         "Should have multiple cache hits"
     );
     assert_eq!(
-        cache_stats.memory.size + cache_stats.disk.size,
-        2,
+        cache_stats.size, 2,
         "Should only have one cached entry (stored in both memory and disk)"
     );
 
@@ -461,15 +431,11 @@ async fn test_docs_cache_behavior() {
     // Should now have 2 cache entries
     let final_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
     assert_eq!(
-        final_stats.memory.size + final_stats.disk.size,
-        4,
+        final_stats.size, 4,
         "Should have 2 different cache entries (stored in both memory and disk)"
     );
 }
@@ -571,23 +537,21 @@ async fn test_complete_documentation_workflow() {
     // Step 4: Verify complete workflow cache utilization
     let workflow_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
     println!("Workflow cache stats: {:?}", workflow_stats);
     assert!(
-        workflow_stats.memory.size + workflow_stats.disk.size >= 3,
+        workflow_stats.size >= 3,
         "Should have cached multiple documentation pieces"
     );
     assert!(
-        workflow_stats.total_hits >= 3,
+        workflow_stats.hits >= 3,
         "Should have multiple cache hits during workflow"
     );
 
-    let hit_rate = workflow_stats.total_hits as f64 / workflow_stats.total_requests as f64;
+    let hit_rate =
+        workflow_stats.hits as f64 / (workflow_stats.hits + workflow_stats.misses) as f64;
     assert!(
         hit_rate > 0.8,
         "Documentation workflow should have high cache hit rate"
@@ -726,19 +690,13 @@ async fn test_docs_performance_characteristics() {
     // Verify cache efficiency
     let perf_stats = {
         let cache_guard = cache.read().await;
-        cache_guard
-            .stats()
-            .await
-            .expect("Failed to get cache stats")
+        cache_guard.stats()
     };
 
-    assert_eq!(
-        perf_stats.memory.size + perf_stats.disk.size,
-        crate_count as usize * 2
-    );
-    assert!(perf_stats.total_hits >= crate_count as u64);
+    assert_eq!(perf_stats.size, crate_count as usize * 2);
+    assert!(perf_stats.hits >= crate_count as u64);
 
-    let hit_rate = perf_stats.total_hits as f64 / perf_stats.total_requests as f64;
+    let hit_rate = perf_stats.hits as f64 / (perf_stats.hits + perf_stats.misses) as f64;
     assert!(
         hit_rate > 0.95,
         "Documentation cache should have very high hit rate"

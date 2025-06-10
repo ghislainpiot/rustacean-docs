@@ -254,9 +254,7 @@ impl MetadataService {
         crate_name: &str,
         version: &str,
     ) -> Result<Vec<CratesIoDependency>, Error> {
-        let url = format!(
-            "https://crates.io/api/v1/crates/{crate_name}/{version}/dependencies"
-        );
+        let url = format!("https://crates.io/api/v1/crates/{crate_name}/{version}/dependencies");
 
         debug!("Requesting dependencies from: {}", url);
 
@@ -444,7 +442,6 @@ impl MetadataService {
         let _ = self.cache.clear().await;
         Ok(())
     }
-
 }
 
 #[cfg(test)]

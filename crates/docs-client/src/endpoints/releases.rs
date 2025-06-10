@@ -196,7 +196,6 @@ impl ReleasesService {
         let _ = self.cache.clear().await;
         Ok(())
     }
-
 }
 
 #[cfg(test)]

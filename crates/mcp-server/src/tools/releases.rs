@@ -62,8 +62,8 @@ impl ToolHandler for RecentReleasesTool {
         debug!("Executing recent releases tool with params: {:?}", params);
 
         // Parse input parameters
-        let input: ReleasesToolInput = serde_json::from_value(params.clone())
-            .unwrap_or(ReleasesToolInput { limit: None });
+        let input: ReleasesToolInput =
+            serde_json::from_value(params.clone()).unwrap_or(ReleasesToolInput { limit: None });
 
         debug!(
             limit = input.limit,
