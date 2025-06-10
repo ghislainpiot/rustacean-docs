@@ -12,8 +12,8 @@ pub use models::{
         RecentReleasesResponse, Visibility,
     },
     metadata::{
-        CacheConfig, CacheLayerStats, CacheStats, ClearCacheResponse, CrateMetadata,
-        CrateMetadataRequest, Dependency, DependencyKind, DownloadStats, PerformanceStats,
+        CacheConfig, CacheStats, ClearCacheResponse, CrateMetadata,
+        CrateMetadataRequest, Dependency, DependencyKind, DownloadStats,
         VersionInfo,
     },
     search::{CrateSearchResult, SearchRequest, SearchResponse},

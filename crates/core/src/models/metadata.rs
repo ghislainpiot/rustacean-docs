@@ -126,53 +126,40 @@ pub enum DependencyKind {
     Build,
 }
 
-/// Cache statistics and performance metrics
+/// Cache statistics - simplified version for the new cache design
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CacheStats {
-    /// Memory cache statistics
-    pub memory: CacheLayerStats,
-    /// Disk cache statistics
-    pub disk: CacheLayerStats,
-    /// Overall performance metrics
-    pub performance: PerformanceStats,
-    /// Cache configuration
-    pub config: CacheConfig,
-}
-
-/// Statistics for a specific cache layer
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CacheLayerStats {
-    /// Number of items currently in cache
-    pub size: usize,
-    /// Maximum capacity
-    pub capacity: usize,
-    /// Total number of requests
-    pub requests: u64,
     /// Number of cache hits
     pub hits: u64,
     /// Number of cache misses
     pub misses: u64,
-    /// Hit rate as percentage
-    pub hit_rate: f64,
-    /// Total size in bytes (for disk cache)
-    pub bytes_used: Option<u64>,
-    /// Maximum size in bytes (for disk cache)
-    pub bytes_capacity: Option<u64>,
+    /// Current number of items in cache
+    pub size: usize,
+    /// Maximum capacity
+    pub capacity: usize,
+    /// Cache configuration
+    pub config: CacheConfig,
 }
 
-/// Performance metrics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PerformanceStats {
-    /// Average response time for cache hits (milliseconds)
-    pub avg_hit_time_ms: f64,
-    /// Average response time for cache misses (milliseconds)
-    pub avg_miss_time_ms: f64,
-    /// Average time to populate cache (milliseconds)
-    pub avg_population_time_ms: f64,
-    /// Number of evictions
-    pub evictions: u64,
-    /// Number of expired items removed
-    pub expirations: u64,
+impl CacheStats {
+    /// Calculate hit rate as a percentage
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / total as f64) * 100.0
+        }
+    }
+
+    /// Calculate cache utilization as a percentage
+    pub fn utilization(&self) -> f64 {
+        if self.capacity == 0 {
+            0.0
+        } else {
+            (self.size as f64 / self.capacity as f64) * 100.0
+        }
+    }
 }
 
 /// Cache configuration information
