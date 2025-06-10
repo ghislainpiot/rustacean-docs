@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
-use rustacean_docs_cache::TieredCache;
-use rustacean_docs_client::{endpoints::search::SearchService, DocsClient};
+use rustacean_docs_cache::{Cache, TieredCache};
+use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{models::search::SearchRequest, Error};
 
 use crate::tools::{ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
@@ -60,7 +60,7 @@ impl ToolHandler for SearchTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<ServerCache>>,
+        cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         trace!("Executing search tool with params: {}", params);
 
@@ -82,16 +82,33 @@ impl ToolHandler for SearchTool {
             "Processing search request"
         );
 
-        // Create search service with cache
-        let search_service = SearchService::new(
-            (**client).clone(),
-            100,                                 // cache capacity
-            std::time::Duration::from_secs(300), // 5 minutes TTL
+        // Generate cache key
+        let cache_key = input.cache_key("search_crate");
+
+        // Try to get from server cache first
+        {
+            let cache_read = cache.read().await;
+            if let Ok(Some(cached_value)) = cache_read.get(&cache_key).await {
+                trace!(
+                    query = %input.query,
+                    limit = input.limit,
+                    cache_key = %cache_key,
+                    "Search cache hit"
+                );
+                return Ok(cached_value);
+            }
+        }
+
+        trace!(
+            query = %input.query,
+            limit = input.limit,
+            cache_key = %cache_key,
+            "Search cache miss, fetching from API"
         );
 
-        // Use SearchService directly - it handles caching internally
+        // Cache miss - fetch directly from client
         let search_request = input.to_search_request();
-        let search_response = search_service
+        let search_response = client
             .search_crates(search_request)
             .await
             .search_context(&input.query)?;
@@ -103,8 +120,22 @@ impl ToolHandler for SearchTool {
             "Search completed successfully"
         );
 
-        // Serialize response to JSON - no manual transformation needed
-        Ok(serde_json::to_value(search_response)?)
+        // Serialize response to JSON for caching
+        let json_value = serde_json::to_value(&search_response)?;
+
+        // Store in server cache for future requests
+        {
+            let cache_write = cache.write().await;
+            let _ = cache_write.insert(cache_key.clone(), json_value.clone()).await;
+        }
+
+        trace!(
+            query = %input.query,
+            cache_key = %cache_key,
+            "Search result cached"
+        );
+
+        Ok(json_value)
     }
 
     fn description(&self) -> &str {
