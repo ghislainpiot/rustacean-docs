@@ -10,5 +10,5 @@ pub mod search;
 // Re-export commonly used types
 pub use docs::{CrateDocsCacheKey, DocsService, ItemDocsCacheKey, RecentReleasesCacheKey};
 pub use metadata::{MetadataCacheKey, MetadataService};
-pub use releases::{ReleasesCacheKey, ReleasesService};
+pub use releases::ReleasesService;
 pub use search::{SearchCacheKey, SearchService};

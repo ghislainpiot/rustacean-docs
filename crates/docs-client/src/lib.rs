@@ -9,7 +9,7 @@ pub use client::{ClientConfig, DocsClient};
 pub use config::{ApiItemPatterns, DocsClientConfig, HtmlParsingConfig, UrlConfig};
 pub use endpoints::{
     CrateDocsCacheKey, DocsService, ItemDocsCacheKey, MetadataCacheKey, MetadataService,
-    RecentReleasesCacheKey, ReleasesCacheKey, ReleasesService, SearchCacheKey, SearchService,
+    RecentReleasesCacheKey, ReleasesService, SearchCacheKey, SearchService,
 };
 pub use html_parser::HtmlParser;
 pub use service_config::{ServiceBuilder, ServiceConfig, ServicesRegistry};

@@ -1,5 +1,6 @@
 use crate::{
     client::DocsClient,
+    endpoints::docs_modules::cache_keys::RecentReleasesCacheKey,
     error_handling::{build_docs_url, handle_http_response, parse_json_response},
 };
 use chrono::{DateTime, Utc};
@@ -9,7 +10,7 @@ use rustacean_docs_core::{
     models::docs::{CrateRelease, RecentReleasesRequest, RecentReleasesResponse},
 };
 use serde::Deserialize;
-use std::{hash::Hash, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tracing::{debug, error, trace};
 
 /// Raw response from crates.io API for recent crates
@@ -40,24 +41,10 @@ struct CratesIoMeta {
     total: usize,
 }
 
-/// Cache key for releases requests
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ReleasesCacheKey {
-    limit: usize,
-}
-
-impl ReleasesCacheKey {
-    fn new(request: &RecentReleasesRequest) -> Self {
-        Self {
-            limit: request.limit(),
-        }
-    }
-}
-
 /// Releases service for fetching recent crate releases
 pub struct ReleasesService {
     client: DocsClient,
-    cache: Arc<MemoryCache<ReleasesCacheKey, RecentReleasesResponse>>,
+    cache: Arc<MemoryCache<RecentReleasesCacheKey, RecentReleasesResponse>>,
 }
 
 impl ReleasesService {
@@ -88,7 +75,7 @@ impl ReleasesService {
         &self,
         request: &RecentReleasesRequest,
     ) -> Result<RecentReleasesResponse, Error> {
-        let cache_key = ReleasesCacheKey::new(request);
+        let cache_key = RecentReleasesCacheKey::new(request);
 
         // Try to get from cache first
         if let Ok(Some(cached_response)) = self.cache.get(&cache_key).await {
@@ -211,11 +198,11 @@ mod tests {
         let req1 = RecentReleasesRequest::new();
         let req2 = RecentReleasesRequest::with_limit(10);
 
-        let key1 = ReleasesCacheKey::new(&req1);
-        let key2 = ReleasesCacheKey::new(&req2);
+        let key1 = RecentReleasesCacheKey::new(&req1);
+        let key2 = RecentReleasesCacheKey::new(&req2);
 
-        assert_eq!(key1.limit, 20); // Default limit
-        assert_eq!(key2.limit, 10);
+        assert_eq!(key1.limit(), 20); // Default limit
+        assert_eq!(key2.limit(), 10);
     }
 
     #[test]

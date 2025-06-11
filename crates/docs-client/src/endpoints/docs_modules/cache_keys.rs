@@ -47,6 +47,10 @@ impl RecentReleasesCacheKey {
             limit: request.limit(),
         }
     }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
 }
 
 #[cfg(test)]
