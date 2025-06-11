@@ -7,7 +7,11 @@ use tracing::debug;
 
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
-use rustacean_docs_core::{models::docs::ItemDocsRequest, Error};
+use rustacean_docs_core::{
+    models::docs::ItemDocsRequest,
+    types::{CrateName, ItemPath, Version},
+    Error, ErrorBuilder,
+};
 
 use crate::tools::{
     CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
@@ -32,10 +36,8 @@ impl ToolInput for ItemDocsToolInput {
     fn validate(&self) -> Result<(), Error> {
         ParameterValidator::validate_crate_name(&self.crate_name, "get_item_docs")?;
         if self.item_path.trim().is_empty() {
-            return Err(Error::invalid_input(
-                "get_item_docs",
-                "item_path cannot be empty",
-            ));
+            return Err(ErrorBuilder::protocol()
+                .invalid_input("get_item_docs", "item_path cannot be empty"));
         }
         ParameterValidator::validate_version(&self.version, "get_item_docs")?;
         Ok(())
@@ -57,12 +59,21 @@ impl ToolInput for ItemDocsToolInput {
 
 impl ItemDocsToolInput {
     /// Convert to internal ItemDocsRequest
-    pub fn to_item_docs_request(&self) -> ItemDocsRequest {
+    pub fn to_item_docs_request(&self) -> Result<ItemDocsRequest, Error> {
+        let crate_name = CrateName::new(&self.crate_name)
+            .map_err(|e| Error::Internal(format!("Invalid crate name: {e}")))?;
+        let item_path = ItemPath::new(&self.item_path)
+            .map_err(|e| Error::Internal(format!("Invalid item path: {e}")))?;
+
         match &self.version {
             Some(version) => {
-                ItemDocsRequest::with_version(&self.crate_name, &self.item_path, version)
+                let version = Version::new(version)
+                    .map_err(|e| Error::Internal(format!("Invalid version: {e}")))?;
+                Ok(ItemDocsRequest::with_version(
+                    crate_name, item_path, version,
+                ))
             }
-            None => ItemDocsRequest::new(&self.crate_name, &self.item_path),
+            None => Ok(ItemDocsRequest::new(crate_name, item_path)),
         }
     }
 }
@@ -125,7 +136,7 @@ impl ToolHandler for ItemDocsTool {
                 );
 
                 // Convert to item docs request
-                let request = input.to_item_docs_request();
+                let request = input.to_item_docs_request()?;
 
                 // Fetch item documentation
                 let response = docs_service
@@ -133,8 +144,8 @@ impl ToolHandler for ItemDocsTool {
                     .await
                     .crate_context(
                         "fetch item documentation",
-                        &request.crate_name,
-                        request.version.as_deref(),
+                        request.crate_name.as_str(),
+                        request.version.as_ref().map(|v| v.as_str()),
                     )?;
 
                 debug!(
@@ -317,19 +328,19 @@ mod tests {
             item_path: "spawn".to_string(),
             version: Some("1.35.0".to_string()),
         };
-        let request = input_with_version.to_item_docs_request();
-        assert_eq!(request.crate_name, "tokio");
-        assert_eq!(request.item_path, "spawn");
-        assert_eq!(request.version, Some("1.35.0".to_string()));
+        let request = input_with_version.to_item_docs_request().unwrap();
+        assert_eq!(request.crate_name.as_str(), "tokio");
+        assert_eq!(request.item_path.as_str(), "spawn");
+        assert_eq!(request.version.as_ref().map(|v| v.as_str()), Some("1.35.0"));
 
         let input_no_version = ItemDocsToolInput {
             crate_name: "serde".to_string(),
             item_path: "Serialize".to_string(),
             version: None,
         };
-        let request = input_no_version.to_item_docs_request();
-        assert_eq!(request.crate_name, "serde");
-        assert_eq!(request.item_path, "Serialize");
+        let request = input_no_version.to_item_docs_request().unwrap();
+        assert_eq!(request.crate_name.as_str(), "serde");
+        assert_eq!(request.item_path.as_str(), "Serialize");
         assert_eq!(request.version, None);
     }
 

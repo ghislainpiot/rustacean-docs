@@ -1,3 +1,9 @@
+use crate::{
+    constants::*,
+    traits::*,
+    types::{CrateName, ItemPath, Version},
+    Result,
+};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -5,24 +11,49 @@ use url::Url;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrateDocsRequest {
     /// Name of the crate
-    pub crate_name: String,
+    pub crate_name: CrateName,
     /// Optional version (defaults to latest)
-    pub version: Option<String>,
+    pub version: Option<Version>,
 }
 
 impl CrateDocsRequest {
-    pub fn new(crate_name: impl Into<String>) -> Self {
+    pub fn new(crate_name: CrateName) -> Self {
         Self {
-            crate_name: crate_name.into(),
+            crate_name,
             version: None,
         }
     }
 
-    pub fn with_version(crate_name: impl Into<String>, version: impl Into<String>) -> Self {
+    pub fn with_version(crate_name: CrateName, version: Version) -> Self {
         Self {
-            crate_name: crate_name.into(),
-            version: Some(version.into()),
+            crate_name,
+            version: Some(version),
         }
+    }
+}
+
+impl Request for CrateDocsRequest {
+    type Response = CrateDocsResponse;
+
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn cache_key(&self) -> Option<String> {
+        Some(format!(
+            "crate_docs:{}:{}",
+            self.crate_name.as_str(),
+            self.version
+                .as_ref()
+                .map(|v| v.as_str())
+                .unwrap_or("latest")
+        ))
+    }
+}
+
+impl VersionedRequest for CrateDocsRequest {
+    fn version(&self) -> Option<&str> {
+        self.version.as_ref().map(|v| v.as_str())
     }
 }
 
@@ -43,6 +74,22 @@ pub struct CrateDocsResponse {
     pub examples: Vec<CodeExample>,
     /// Documentation URL
     pub docs_url: Option<Url>,
+}
+
+impl Response for CrateDocsResponse {
+    fn cache_ttl(&self) -> Option<u64> {
+        Some(DEFAULT_CRATE_DOCS_TTL)
+    }
+}
+
+impl Cacheable for CrateDocsResponse {
+    fn cache_key(&self) -> String {
+        format!("crate_docs:{}:{}", self.name, self.version)
+    }
+
+    fn ttl_seconds(&self) -> u64 {
+        DEFAULT_CRATE_DOCS_TTL
+    }
 }
 
 /// Key information and metrics about the crate
@@ -143,32 +190,54 @@ pub struct CodeExample {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ItemDocsRequest {
     /// Name of the crate
-    pub crate_name: String,
+    pub crate_name: CrateName,
     /// Item identifier - can be simple name or full path
-    pub item_path: String,
+    pub item_path: ItemPath,
     /// Specific version to query (defaults to latest)
-    pub version: Option<String>,
+    pub version: Option<Version>,
 }
 
 impl ItemDocsRequest {
-    pub fn new(crate_name: impl Into<String>, item_path: impl Into<String>) -> Self {
+    pub fn new(crate_name: CrateName, item_path: ItemPath) -> Self {
         Self {
-            crate_name: crate_name.into(),
-            item_path: item_path.into(),
+            crate_name,
+            item_path,
             version: None,
         }
     }
 
-    pub fn with_version(
-        crate_name: impl Into<String>,
-        item_path: impl Into<String>,
-        version: impl Into<String>,
-    ) -> Self {
+    pub fn with_version(crate_name: CrateName, item_path: ItemPath, version: Version) -> Self {
         Self {
-            crate_name: crate_name.into(),
-            item_path: item_path.into(),
-            version: Some(version.into()),
+            crate_name,
+            item_path,
+            version: Some(version),
         }
+    }
+}
+
+impl Request for ItemDocsRequest {
+    type Response = ItemDocsResponse;
+
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn cache_key(&self) -> Option<String> {
+        Some(format!(
+            "item_docs:{}:{}:{}",
+            self.crate_name.as_str(),
+            self.item_path.as_str(),
+            self.version
+                .as_ref()
+                .map(|v| v.as_str())
+                .unwrap_or("latest")
+        ))
+    }
+}
+
+impl VersionedRequest for ItemDocsRequest {
+    fn version(&self) -> Option<&str> {
+        self.version.as_ref().map(|v| v.as_str())
     }
 }
 
@@ -195,6 +264,22 @@ pub struct ItemDocsResponse {
     pub related_items: Vec<String>,
 }
 
+impl Response for ItemDocsResponse {
+    fn cache_ttl(&self) -> Option<u64> {
+        Some(DEFAULT_ITEM_DOCS_TTL)
+    }
+}
+
+impl Cacheable for ItemDocsResponse {
+    fn cache_key(&self) -> String {
+        format!("item_docs:{}:{}", self.crate_name, self.item_path)
+    }
+
+    fn ttl_seconds(&self) -> u64 {
+        DEFAULT_ITEM_DOCS_TTL
+    }
+}
+
 /// Recent releases information
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RecentReleasesRequest {
@@ -212,7 +297,27 @@ impl RecentReleasesRequest {
     }
 
     pub fn limit(&self) -> usize {
-        self.limit.unwrap_or(20).min(100)
+        self.limit
+            .unwrap_or(DEFAULT_RECENT_RELEASES_LIMIT)
+            .min(MAX_RECENT_RELEASES_LIMIT)
+    }
+}
+
+impl Request for RecentReleasesRequest {
+    type Response = RecentReleasesResponse;
+
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn cache_key(&self) -> Option<String> {
+        Some(format!("recent_releases:{}", self.limit()))
+    }
+}
+
+impl PaginatedRequest for RecentReleasesRequest {
+    fn limit(&self) -> usize {
+        self.limit()
     }
 }
 
@@ -227,6 +332,22 @@ impl Default for RecentReleasesRequest {
 pub struct RecentReleasesResponse {
     /// List of recent releases
     pub releases: Vec<CrateRelease>,
+}
+
+impl Response for RecentReleasesResponse {
+    fn cache_ttl(&self) -> Option<u64> {
+        Some(DEFAULT_RECENT_RELEASES_TTL)
+    }
+}
+
+impl Cacheable for RecentReleasesResponse {
+    fn cache_key(&self) -> String {
+        format!("recent_releases:{}", self.releases.len())
+    }
+
+    fn ttl_seconds(&self) -> u64 {
+        DEFAULT_RECENT_RELEASES_TTL
+    }
 }
 
 /// Information about a recent crate release
@@ -252,39 +373,48 @@ mod tests {
 
     #[test]
     fn test_crate_docs_request_new() {
-        let req = CrateDocsRequest::new("tokio");
-        assert_eq!(req.crate_name, "tokio");
+        let crate_name = CrateName::new("tokio").unwrap();
+        let req = CrateDocsRequest::new(crate_name.clone());
+        assert_eq!(req.crate_name, crate_name);
         assert_eq!(req.version, None);
     }
 
     #[test]
     fn test_crate_docs_request_with_version() {
-        let req = CrateDocsRequest::with_version("tokio", "1.0.0");
-        assert_eq!(req.crate_name, "tokio");
-        assert_eq!(req.version, Some("1.0.0".to_string()));
+        let crate_name = CrateName::new("tokio").unwrap();
+        let version = Version::new("1.0.0").unwrap();
+        let req = CrateDocsRequest::with_version(crate_name.clone(), version.clone());
+        assert_eq!(req.crate_name, crate_name);
+        assert_eq!(req.version, Some(version));
     }
 
     #[test]
     fn test_item_docs_request_new() {
-        let req = ItemDocsRequest::new("tokio", "spawn");
-        assert_eq!(req.crate_name, "tokio");
-        assert_eq!(req.item_path, "spawn");
+        let crate_name = CrateName::new("tokio").unwrap();
+        let item_path = ItemPath::new("spawn").unwrap();
+        let req = ItemDocsRequest::new(crate_name.clone(), item_path.clone());
+        assert_eq!(req.crate_name, crate_name);
+        assert_eq!(req.item_path, item_path);
         assert_eq!(req.version, None);
     }
 
     #[test]
     fn test_item_docs_request_with_version() {
-        let req = ItemDocsRequest::with_version("tokio", "spawn", "1.0.0");
-        assert_eq!(req.crate_name, "tokio");
-        assert_eq!(req.item_path, "spawn");
-        assert_eq!(req.version, Some("1.0.0".to_string()));
+        let crate_name = CrateName::new("tokio").unwrap();
+        let item_path = ItemPath::new("spawn").unwrap();
+        let version = Version::new("1.0.0").unwrap();
+        let req =
+            ItemDocsRequest::with_version(crate_name.clone(), item_path.clone(), version.clone());
+        assert_eq!(req.crate_name, crate_name);
+        assert_eq!(req.item_path, item_path);
+        assert_eq!(req.version, Some(version));
     }
 
     #[test]
     fn test_recent_releases_request_new() {
         let req = RecentReleasesRequest::new();
         assert_eq!(req.limit, None);
-        assert_eq!(req.limit(), 20);
+        assert_eq!(req.limit(), DEFAULT_RECENT_RELEASES_LIMIT);
     }
 
     #[test]
@@ -297,14 +427,14 @@ mod tests {
     #[test]
     fn test_recent_releases_request_limit_clamping() {
         let req = RecentReleasesRequest::with_limit(200);
-        assert_eq!(req.limit(), 100); // Should be clamped to max 100
+        assert_eq!(req.limit(), MAX_RECENT_RELEASES_LIMIT); // Should be clamped to max
     }
 
     #[test]
     fn test_recent_releases_request_default() {
         let req = RecentReleasesRequest::default();
         assert_eq!(req.limit, None);
-        assert_eq!(req.limit(), 20);
+        assert_eq!(req.limit(), DEFAULT_RECENT_RELEASES_LIMIT);
     }
 
     #[test]

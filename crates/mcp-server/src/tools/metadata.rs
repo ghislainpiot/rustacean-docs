@@ -9,6 +9,7 @@ use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{DocsClient, MetadataService};
 use rustacean_docs_core::{
     models::metadata::{CrateMetadata, CrateMetadataRequest},
+    types::{CrateName, Version},
     Error,
 };
 
@@ -46,10 +47,17 @@ impl ToolInput for MetadataToolInput {
 
 impl MetadataToolInput {
     /// Convert to internal request format
-    pub fn to_request(&self) -> CrateMetadataRequest {
+    pub fn to_request(&self) -> Result<CrateMetadataRequest, Error> {
+        let crate_name = CrateName::new(&self.crate_name)
+            .map_err(|e| Error::Internal(format!("Invalid crate name: {e}")))?;
+
         match &self.version {
-            Some(version) => CrateMetadataRequest::with_version(&self.crate_name, version),
-            None => CrateMetadataRequest::new(&self.crate_name),
+            Some(version) => {
+                let version = Version::new(version)
+                    .map_err(|e| Error::Internal(format!("Invalid version: {e}")))?;
+                Ok(CrateMetadataRequest::with_version(crate_name, version))
+            }
+            None => Ok(CrateMetadataRequest::new(crate_name)),
         }
     }
 }
@@ -397,7 +405,7 @@ impl ToolHandler for CrateMetadataTool {
             cache,
             |input, client| async move {
                 // Convert to request
-                let request = input.to_request();
+                let request = input.to_request()?;
 
                 // Create metadata service with cloned client
                 let metadata_service = MetadataService::new((*client).clone());
@@ -407,8 +415,8 @@ impl ToolHandler for CrateMetadataTool {
                     .await
                     .crate_context(
                         "fetch metadata",
-                        &request.crate_name,
-                        request.version.as_deref(),
+                        request.crate_name.as_str(),
+                        request.version.as_ref().map(|v| v.as_str()),
                     )?;
 
                 let formatted_response =
@@ -417,7 +425,7 @@ impl ToolHandler for CrateMetadataTool {
                 Ok(json!({
                     "status": "success",
                     "crate_name": request.crate_name,
-                    "version": request.version.unwrap_or_else(|| "latest".to_string()),
+                    "version": request.version.as_ref().map(|v| v.as_str()).unwrap_or("latest"),
                     "metadata": formatted_response
                 }))
             },
@@ -484,17 +492,17 @@ mod tests {
             version: Some("1.0.0".to_string()),
         };
 
-        let request = input.to_request();
-        assert_eq!(request.crate_name, "serde");
-        assert_eq!(request.version, Some("1.0.0".to_string()));
+        let request = input.to_request().unwrap();
+        assert_eq!(request.crate_name.as_str(), "serde");
+        assert_eq!(request.version.as_ref().map(|v| v.as_str()), Some("1.0.0"));
 
         let input_no_version = MetadataToolInput {
             crate_name: "tokio".to_string(),
             version: None,
         };
 
-        let request_no_version = input_no_version.to_request();
-        assert_eq!(request_no_version.crate_name, "tokio");
+        let request_no_version = input_no_version.to_request().unwrap();
+        assert_eq!(request_no_version.crate_name.as_str(), "tokio");
         assert_eq!(request_no_version.version, None);
     }
 

@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 
 use rustacean_docs_cache::{Cache, TieredCache};
 use rustacean_docs_client::DocsClient;
-use rustacean_docs_core::Error;
+use rustacean_docs_core::{Error, ErrorBuilder};
 
 pub mod cache_ops;
 pub mod crate_docs;
@@ -43,10 +43,9 @@ impl ParameterValidator {
     /// Validate crate name format
     pub fn validate_crate_name(name: &str, tool_name: &str) -> Result<(), Error> {
         if name.trim().is_empty() {
-            return Err(Error::invalid_input(
-                tool_name,
-                "crate_name cannot be empty",
-            ));
+            return Err(
+                ErrorBuilder::protocol().invalid_input(tool_name, "crate_name cannot be empty")
+            );
         }
 
         // Basic crate name validation - should contain only valid characters
@@ -54,10 +53,8 @@ impl ParameterValidator {
             .chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
         {
-            return Err(Error::invalid_input(
-                tool_name,
-                "crate_name contains invalid characters",
-            ));
+            return Err(ErrorBuilder::protocol()
+                .invalid_input(tool_name, "crate_name contains invalid characters"));
         }
 
         Ok(())
@@ -67,10 +64,8 @@ impl ParameterValidator {
     pub fn validate_version(version: &Option<String>, tool_name: &str) -> Result<(), Error> {
         if let Some(ref version) = version {
             if version.trim().is_empty() {
-                return Err(Error::invalid_input(
-                    tool_name,
-                    "version cannot be empty string",
-                ));
+                return Err(ErrorBuilder::protocol()
+                    .invalid_input(tool_name, "version cannot be empty string"));
             }
         }
         Ok(())
@@ -79,7 +74,7 @@ impl ParameterValidator {
     /// Validate search query
     pub fn validate_query(query: &str, tool_name: &str) -> Result<(), Error> {
         if query.trim().is_empty() {
-            return Err(Error::invalid_input(tool_name, "query cannot be empty"));
+            return Err(ErrorBuilder::protocol().invalid_input(tool_name, "query cannot be empty"));
         }
         Ok(())
     }
@@ -92,13 +87,11 @@ impl ParameterValidator {
     ) -> Result<(), Error> {
         if let Some(limit) = limit {
             if *limit == 0 {
-                return Err(Error::invalid_input(
-                    tool_name,
-                    "limit must be greater than 0",
-                ));
+                return Err(ErrorBuilder::protocol()
+                    .invalid_input(tool_name, "limit must be greater than 0"));
             }
             if *limit > max_limit {
-                return Err(Error::invalid_input(
+                return Err(ErrorBuilder::protocol().invalid_input(
                     tool_name,
                     format!("limit cannot exceed {max_limit} for performance reasons"),
                 ));

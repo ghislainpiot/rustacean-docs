@@ -1,12 +1,16 @@
 use crate::endpoints::docs_modules::service::DocsService;
-use rustacean_docs_core::{models::docs::CrateDocsRequest, Result};
+use rustacean_docs_core::{
+    models::docs::CrateDocsRequest,
+    types::{CrateName, Version},
+    Result,
+};
 
 /// Resolve item path for different formats with intelligent fallback
 pub async fn resolve_item_path_with_fallback(
     docs_service: &DocsService,
     crate_name: &str,
     item_path: &str,
-    version: &Option<String>,
+    version: &Option<Version>,
 ) -> Result<String> {
     // If it's already a full path, use as-is
     if item_path.contains('.') && item_path.contains("html") {
@@ -15,7 +19,9 @@ pub async fn resolve_item_path_with_fallback(
 
     // If it's a simple name, try to find it by fetching the crate docs first
     let crate_docs_request = CrateDocsRequest {
-        crate_name: crate_name.to_string(),
+        crate_name: CrateName::new(crate_name).map_err(|_| {
+            rustacean_docs_core::error::ErrorBuilder::internal("Invalid crate name")
+        })?,
         version: version.clone(),
     };
 

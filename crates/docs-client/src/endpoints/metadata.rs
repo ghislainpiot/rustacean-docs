@@ -26,8 +26,8 @@ impl MetadataCacheKey {
     #[allow(dead_code)]
     fn new(request: &CrateMetadataRequest) -> Self {
         Self {
-            crate_name: request.crate_name.clone(),
-            version: request.version.clone(),
+            crate_name: request.crate_name.to_string(),
+            version: request.version.as_ref().map(|v| v.to_string()),
         }
     }
 }
@@ -215,7 +215,7 @@ impl MetadataService {
             .await
             .map_err(|e| {
                 error!("Failed to fetch metadata from crates.io: {}", e);
-                Error::Network(e)
+                rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
             })?;
 
         let response = handle_http_response(
@@ -229,11 +229,12 @@ impl MetadataService {
         // Fetch dependencies separately for the target version
         let target_version = request
             .version
-            .as_deref()
+            .as_ref()
+            .map(|v| v.as_str())
             .unwrap_or(&crates_io_response.crate_info.max_version);
 
         if let Ok(dependencies) = self
-            .fetch_dependencies(&request.crate_name, target_version)
+            .fetch_dependencies(request.crate_name.as_str(), target_version)
             .await
         {
             // Find the target version and add the dependencies to it
@@ -266,7 +267,7 @@ impl MetadataService {
             .await
             .map_err(|e| {
                 error!("Failed to fetch dependencies from crates.io: {}", e);
-                Error::Network(e)
+                rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
             })?;
 
         let response = handle_http_response(
@@ -291,7 +292,8 @@ impl MetadataService {
         // Find the target version or use latest
         let target_version = request
             .version
-            .as_deref()
+            .as_ref()
+            .map(|v| v.as_str())
             .unwrap_or(&crate_info.max_version);
 
         let target_version_info = response
@@ -300,9 +302,10 @@ impl MetadataService {
             .find(|v| v.num == target_version)
             .cloned()
             .ok_or_else(|| {
-                Error::invalid_version(format!(
+                rustacean_docs_core::ErrorBuilder::docs().invalid_version(format!(
                     "Version {} not found for crate {}",
-                    target_version, request.crate_name
+                    target_version,
+                    request.crate_name.as_str()
                 ))
             })?;
 
@@ -454,8 +457,11 @@ mod tests {
 
     #[test]
     fn test_metadata_cache_key() {
-        let req1 = CrateMetadataRequest::new("serde");
-        let req2 = CrateMetadataRequest::with_version("serde", "1.0.0");
+        let req1 = CrateMetadataRequest::new(rustacean_docs_core::CrateName::new("serde").unwrap());
+        let req2 = CrateMetadataRequest::with_version(
+            rustacean_docs_core::CrateName::new("serde").unwrap(),
+            rustacean_docs_core::Version::new("1.0.0").unwrap(),
+        );
 
         let key1 = MetadataCacheKey::new(&req1);
         let key2 = MetadataCacheKey::new(&req2);

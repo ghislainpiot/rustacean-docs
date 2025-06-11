@@ -123,7 +123,7 @@ impl ReleasesService {
             .await
             .map_err(|e| {
                 error!("Failed to fetch recent releases from crates.io: {}", e);
-                Error::Network(e)
+                rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
             })?;
 
         let response = handle_http_response(response, "crates.io recent releases").await?;
@@ -157,7 +157,9 @@ impl ReleasesService {
                     "Failed to parse timestamp '{}': {}",
                     crate_data.updated_at, e
                 );
-                Error::internal(format!("Invalid timestamp format: {e}"))
+                rustacean_docs_core::ErrorBuilder::internal(format!(
+                    "Invalid timestamp format: {e}"
+                ))
             })?
             .with_timezone(&Utc);
 

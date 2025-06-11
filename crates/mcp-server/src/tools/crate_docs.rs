@@ -7,7 +7,11 @@ use tracing::debug;
 
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
-use rustacean_docs_core::{models::docs::CrateDocsRequest, Error};
+use rustacean_docs_core::{
+    models::docs::CrateDocsRequest,
+    types::{CrateName, Version},
+    Error,
+};
 
 use crate::tools::{
     CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
@@ -43,10 +47,17 @@ impl ToolInput for CrateDocsToolInput {
 
 impl CrateDocsToolInput {
     /// Convert to internal CrateDocsRequest
-    pub fn to_crate_docs_request(&self) -> CrateDocsRequest {
+    pub fn to_crate_docs_request(&self) -> Result<CrateDocsRequest, Error> {
+        let crate_name = CrateName::new(&self.crate_name)
+            .map_err(|e| Error::Internal(format!("Invalid crate name: {e}")))?;
+
         match &self.version {
-            Some(version) => CrateDocsRequest::with_version(&self.crate_name, version),
-            None => CrateDocsRequest::new(&self.crate_name),
+            Some(version) => {
+                let version = Version::new(version)
+                    .map_err(|e| Error::Internal(format!("Invalid version: {e}")))?;
+                Ok(CrateDocsRequest::with_version(crate_name, version))
+            }
+            None => Ok(CrateDocsRequest::new(crate_name)),
         }
     }
 }
@@ -102,7 +113,7 @@ impl ToolHandler for CrateDocsTool {
                 );
 
                 // Convert to docs request
-                let docs_request = input.to_crate_docs_request();
+                let docs_request = input.to_crate_docs_request()?;
 
                 // Fetch documentation
                 let docs_response = docs_service
@@ -230,16 +241,16 @@ mod tests {
             crate_name: "tokio".to_string(),
             version: Some("1.35.0".to_string()),
         };
-        let request = input_with_version.to_crate_docs_request();
-        assert_eq!(request.crate_name, "tokio");
-        assert_eq!(request.version, Some("1.35.0".to_string()));
+        let request = input_with_version.to_crate_docs_request().unwrap();
+        assert_eq!(request.crate_name.as_str(), "tokio");
+        assert_eq!(request.version.as_ref().map(|v| v.as_str()), Some("1.35.0"));
 
         let input_no_version = CrateDocsToolInput {
             crate_name: "serde".to_string(),
             version: None,
         };
-        let request = input_no_version.to_crate_docs_request();
-        assert_eq!(request.crate_name, "serde");
+        let request = input_no_version.to_crate_docs_request().unwrap();
+        assert_eq!(request.crate_name.as_str(), "serde");
         assert_eq!(request.version, None);
     }
 

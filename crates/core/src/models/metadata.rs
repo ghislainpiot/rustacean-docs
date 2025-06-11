@@ -1,3 +1,9 @@
+use crate::{
+    constants::*,
+    traits::*,
+    types::{CrateName, Version},
+    Result,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,24 +13,49 @@ use url::Url;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrateMetadataRequest {
     /// Name of the crate
-    pub crate_name: String,
+    pub crate_name: CrateName,
     /// Specific version to query (defaults to latest)
-    pub version: Option<String>,
+    pub version: Option<Version>,
 }
 
 impl CrateMetadataRequest {
-    pub fn new(crate_name: impl Into<String>) -> Self {
+    pub fn new(crate_name: CrateName) -> Self {
         Self {
-            crate_name: crate_name.into(),
+            crate_name,
             version: None,
         }
     }
 
-    pub fn with_version(crate_name: impl Into<String>, version: impl Into<String>) -> Self {
+    pub fn with_version(crate_name: CrateName, version: Version) -> Self {
         Self {
-            crate_name: crate_name.into(),
-            version: Some(version.into()),
+            crate_name,
+            version: Some(version),
         }
+    }
+}
+
+impl Request for CrateMetadataRequest {
+    type Response = CrateMetadata;
+
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn cache_key(&self) -> Option<String> {
+        Some(format!(
+            "metadata:{}:{}",
+            self.crate_name.as_str(),
+            self.version
+                .as_ref()
+                .map(|v| v.as_str())
+                .unwrap_or("latest")
+        ))
+    }
+}
+
+impl VersionedRequest for CrateMetadataRequest {
+    fn version(&self) -> Option<&str> {
+        self.version.as_ref().map(|v| v.as_str())
     }
 }
 
@@ -69,6 +100,22 @@ pub struct CrateMetadata {
     pub created_at: Option<DateTime<Utc>>,
     /// Last update date
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl Response for CrateMetadata {
+    fn cache_ttl(&self) -> Option<u64> {
+        Some(DEFAULT_METADATA_TTL)
+    }
+}
+
+impl Cacheable for CrateMetadata {
+    fn cache_key(&self) -> String {
+        format!("metadata:{}:{}", self.name, self.version)
+    }
+
+    fn ttl_seconds(&self) -> u64 {
+        DEFAULT_METADATA_TTL
+    }
 }
 
 /// Download statistics for a crate
@@ -190,6 +237,10 @@ pub struct ClearCacheResponse {
     pub message: String,
 }
 
+impl Response for CacheStats {}
+
+impl Response for ClearCacheResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,16 +250,19 @@ mod tests {
 
     #[test]
     fn test_crate_metadata_request_new() {
-        let req = CrateMetadataRequest::new("tokio");
-        assert_eq!(req.crate_name, "tokio");
+        let crate_name = CrateName::new("tokio").unwrap();
+        let req = CrateMetadataRequest::new(crate_name.clone());
+        assert_eq!(req.crate_name, crate_name);
         assert_eq!(req.version, None);
     }
 
     #[test]
     fn test_crate_metadata_request_with_version() {
-        let req = CrateMetadataRequest::with_version("tokio", "1.0.0");
-        assert_eq!(req.crate_name, "tokio");
-        assert_eq!(req.version, Some("1.0.0".to_string()));
+        let crate_name = CrateName::new("tokio").unwrap();
+        let version = Version::new("1.0.0").unwrap();
+        let req = CrateMetadataRequest::with_version(crate_name.clone(), version.clone());
+        assert_eq!(req.crate_name, crate_name);
+        assert_eq!(req.version, Some(version));
     }
 
     #[test]
@@ -318,8 +372,8 @@ mod tests {
         let config = CacheConfig {
             memory_capacity: 1000,
             disk_capacity_bytes: 524288000,
-            docs_ttl_seconds: 3600,
-            search_ttl_seconds: 300,
+            docs_ttl_seconds: DEFAULT_CRATE_DOCS_TTL,
+            search_ttl_seconds: DEFAULT_SEARCH_TTL,
             cache_dir: "/tmp/rustacean-docs".to_string(),
         };
 

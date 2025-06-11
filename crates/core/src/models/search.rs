@@ -1,3 +1,4 @@
+use crate::{constants::*, traits::*, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -27,7 +28,31 @@ impl SearchRequest {
     }
 
     pub fn limit(&self) -> usize {
-        self.limit.unwrap_or(10).min(50)
+        self.limit
+            .unwrap_or(DEFAULT_SEARCH_LIMIT)
+            .min(MAX_SEARCH_LIMIT)
+    }
+}
+
+impl Request for SearchRequest {
+    type Response = SearchResponse;
+
+    fn validate(&self) -> Result<()> {
+        if self.query.is_empty() {
+            return Err(crate::ErrorBuilder::protocol()
+                .invalid_input("search_crate", "Query cannot be empty"));
+        }
+        Ok(())
+    }
+
+    fn cache_key(&self) -> Option<String> {
+        Some(format!("search:{}:{}", self.query, self.limit()))
+    }
+}
+
+impl PaginatedRequest for SearchRequest {
+    fn limit(&self) -> usize {
+        self.limit()
     }
 }
 
@@ -53,6 +78,22 @@ impl SearchResponse {
             results,
             total: Some(total),
         }
+    }
+}
+
+impl Response for SearchResponse {
+    fn cache_ttl(&self) -> Option<u64> {
+        Some(DEFAULT_SEARCH_TTL)
+    }
+}
+
+impl Cacheable for SearchResponse {
+    fn cache_key(&self) -> String {
+        format!("search_response:{}", self.results.len())
+    }
+
+    fn ttl_seconds(&self) -> u64 {
+        DEFAULT_SEARCH_TTL
     }
 }
 
@@ -92,7 +133,7 @@ mod tests {
         let req = SearchRequest::new("tokio");
         assert_eq!(req.query, "tokio");
         assert_eq!(req.limit, None);
-        assert_eq!(req.limit(), 10);
+        assert_eq!(req.limit(), DEFAULT_SEARCH_LIMIT);
     }
 
     #[test]
@@ -106,7 +147,7 @@ mod tests {
     #[test]
     fn test_search_request_limit_clamping() {
         let req = SearchRequest::with_limit("test", 100);
-        assert_eq!(req.limit(), 50); // Should be clamped to max 50
+        assert_eq!(req.limit(), MAX_SEARCH_LIMIT); // Should be clamped to max
     }
 
     #[test]

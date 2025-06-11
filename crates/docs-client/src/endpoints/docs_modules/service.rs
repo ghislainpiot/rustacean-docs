@@ -64,13 +64,20 @@ impl DocsService {
         );
 
         // Cache miss - fetch from docs.rs
-        let version = request.version.as_deref().unwrap_or("latest");
+        let version = request
+            .version
+            .as_ref()
+            .map(|v| v.as_str())
+            .unwrap_or("latest");
         let path = format!(
             "/{}/{}/{}/",
-            request.crate_name, version, request.crate_name
+            request.crate_name.as_str(),
+            version,
+            request.crate_name.as_str()
         );
         let html = self.client.get_text(&path).await?;
-        let response = parse_crate_documentation(&html, &request.crate_name, &request.version)?;
+        let version_str = request.version.as_ref().map(|v| v.as_str().to_string());
+        let response = parse_crate_documentation(&html, request.crate_name.as_str(), &version_str)?;
 
         // Store in cache for future requests
         let _ = self
@@ -111,14 +118,24 @@ impl DocsService {
         );
 
         // Cache miss - fetch from docs.rs
-        let version = request.version.as_deref().unwrap_or("latest");
-        let url = format!("/{}/{}/{}", request.crate_name, version, request.item_path);
+        let version = request
+            .version
+            .as_ref()
+            .map(|v| v.as_str())
+            .unwrap_or("latest");
+        let url = format!(
+            "/{}/{}/{}",
+            request.crate_name.as_str(),
+            version,
+            request.item_path.as_str()
+        );
         let html = self.client.get_text(&url).await?;
+        let version_str = request.version.as_ref().map(|v| v.as_str().to_string());
         let response = parse_item_documentation(
             &html,
-            &request.crate_name,
-            &request.item_path,
-            &request.version,
+            request.crate_name.as_str(),
+            request.item_path.as_str(),
+            &version_str,
         )?;
 
         // Store in cache for future requests

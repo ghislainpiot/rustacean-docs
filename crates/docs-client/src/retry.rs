@@ -281,8 +281,9 @@ impl RetryPolicy {
             // Check circuit breaker before attempting request
             if !self.circuit_breaker.should_allow_request() {
                 warn!("Circuit breaker is OPEN, rejecting request");
-                return Err(rustacean_docs_core::Error::network(
-                    "Circuit breaker is open - service unavailable".to_string(),
+                return Err(rustacean_docs_core::error::ErrorBuilder::network().http_request(
+                    "Circuit breaker is open - service unavailable", 
+                    Some(503)
                 ));
             }
 
@@ -311,10 +312,11 @@ impl RetryPolicy {
 
                     // Don't retry on the last attempt
                     if attempt + 1 >= self.retry_config.max_attempts {
-                        return Err(rustacean_docs_core::Error::network(format!(
-                            "Operation failed after {} attempts: {}",
-                            self.retry_config.max_attempts, error
-                        )));
+                        return Err(rustacean_docs_core::error::ErrorBuilder::network().http_request(
+                            format!("Operation failed after {} attempts: {}", 
+                                   self.retry_config.max_attempts, error),
+                            None
+                        ));
                     }
 
                     // Calculate delay with exponential backoff
@@ -335,10 +337,7 @@ impl RetryPolicy {
 
                     // Don't retry on the last attempt
                     if attempt + 1 >= self.retry_config.max_attempts {
-                        return Err(rustacean_docs_core::Error::network(format!(
-                            "Operation timed out after {} attempts",
-                            self.retry_config.max_attempts
-                        )));
+                        return Err(rustacean_docs_core::error::ErrorBuilder::network().timeout());
                     }
 
                     // Calculate delay with exponential backoff
@@ -353,8 +352,8 @@ impl RetryPolicy {
         }
 
         // This should never be reached due to the loop logic above
-        Err(rustacean_docs_core::Error::internal(
-            "Retry loop completed unexpectedly".to_string(),
+        Err(rustacean_docs_core::error::ErrorBuilder::internal(
+            "Retry loop completed unexpectedly"
         ))
     }
 
@@ -401,32 +400,19 @@ impl Default for RetryPolicy {
 /// Determines if an error should be retried
 pub fn should_retry_error(error: &rustacean_docs_core::Error) -> bool {
     match error {
-        rustacean_docs_core::Error::Network { .. } => true,
-        rustacean_docs_core::Error::HttpRequest { status, .. } => {
-            // Retry on server errors (5xx) and some client errors
-            if let Some(status_code) = status {
-                match *status_code {
-                    // Retry on server errors
-                    500..=599 => true,
-                    // Retry on rate limiting
-                    429 => true,
-                    // Retry on request timeout
-                    408 => true,
-                    // Don't retry on other client errors
-                    400..=499 => false,
-                    // Retry on unexpected status codes
-                    _ => true,
-                }
-            } else {
-                // Retry if no status code (connection error)
-                true
-            }
-        }
-        rustacean_docs_core::Error::Timeout { .. } => true,
-        // Don't retry on parsing, validation, or internal errors
-        rustacean_docs_core::Error::Parsing { .. }
-        | rustacean_docs_core::Error::Validation { .. }
-        | rustacean_docs_core::Error::Internal { .. } => false,
+        rustacean_docs_core::Error::Network(network_err) => {
+            network_err.is_recoverable()
+        },
+        rustacean_docs_core::Error::Docs(_) => false,
+        rustacean_docs_core::Error::Cache(cache_err) => {
+            cache_err.is_recoverable()
+        },
+        rustacean_docs_core::Error::Config(_) => false,
+        rustacean_docs_core::Error::Protocol(_) => false,
+        rustacean_docs_core::Error::Serialization(_) => false,
+        rustacean_docs_core::Error::UrlParse(_) => false,
+        rustacean_docs_core::Error::Io(_) => true,
+        rustacean_docs_core::Error::Internal(_) => false,
     }
 }
 
@@ -587,27 +573,27 @@ mod tests {
     #[test]
     fn test_should_retry_error() {
         // Should retry network errors
-        let network_error = rustacean_docs_core::Error::network("Connection failed".to_string());
+        let network_error = rustacean_docs_core::error::ErrorBuilder::network().http_request("Connection failed", None);
         assert!(should_retry_error(&network_error));
 
         // Should retry server errors
-        let server_error = rustacean_docs_core::Error::http_request("Internal server error".to_string(), Some(500));
+        let server_error = rustacean_docs_core::error::ErrorBuilder::network().http_request("Internal server error", Some(500));
         assert!(should_retry_error(&server_error));
 
         // Should retry rate limiting
-        let rate_limit_error = rustacean_docs_core::Error::http_request("Rate limited".to_string(), Some(429));
+        let rate_limit_error = rustacean_docs_core::error::ErrorBuilder::network().rate_limit(None);
         assert!(should_retry_error(&rate_limit_error));
 
         // Should not retry client errors (except specific ones)
-        let client_error = rustacean_docs_core::Error::http_request("Not found".to_string(), Some(404));
+        let client_error = rustacean_docs_core::error::ErrorBuilder::network().http_request("Not found", Some(404));
         assert!(!should_retry_error(&client_error));
 
         // Should not retry parsing errors
-        let parse_error = rustacean_docs_core::Error::parsing("Invalid JSON".to_string());
+        let parse_error = rustacean_docs_core::error::ErrorBuilder::docs().parse_error("Invalid JSON");
         assert!(!should_retry_error(&parse_error));
 
-        // Should not retry validation errors
-        let validation_error = rustacean_docs_core::Error::validation("Invalid input".to_string());
+        // Should not retry validation errors  
+        let validation_error = rustacean_docs_core::error::ErrorBuilder::protocol().invalid_input("test_tool", "Invalid input");
         assert!(!should_retry_error(&validation_error));
     }
 

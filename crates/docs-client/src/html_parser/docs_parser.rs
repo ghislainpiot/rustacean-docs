@@ -8,7 +8,7 @@ use rustacean_docs_core::{
         CrateCategories, CrateDocsResponse, CrateItem, CrateRelease, CrateSummary,
         ItemDocsResponse, ItemKind, Visibility,
     },
-    resolve_version, Result,
+    resolve_version, ErrorBuilder, Result,
 };
 use scraper::{Html, Selector};
 use tracing::trace;
@@ -109,9 +109,8 @@ pub fn parse_recent_releases(html: &str, limit: usize) -> Result<Vec<CrateReleas
 
     // Look for recent releases section (this is a simplified implementation)
     // In practice, we'd need to analyze the actual docs.rs homepage structure
-    let releases_selector = Selector::parse(".recent-releases .release-item").map_err(|e| {
-        rustacean_docs_core::Error::documentation_parse(format!("Invalid CSS selector: {e}"))
-    })?;
+    let releases_selector = Selector::parse(".recent-releases .release-item")
+        .map_err(|e| ErrorBuilder::docs().parse_error(format!("Invalid CSS selector: {e}")))?;
 
     for element in document.select(&releases_selector).take(limit) {
         if let Some(release) = extract_release_info(&element) {

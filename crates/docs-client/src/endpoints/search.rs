@@ -5,7 +5,6 @@ use crate::{
 use chrono::{DateTime, Utc};
 use rustacean_docs_cache::{Cache, MemoryCache};
 use rustacean_docs_core::{
-    error::ErrorContext,
     models::search::{CrateSearchResult, SearchRequest, SearchResponse},
     Result, DEFAULT_VERSION,
 };
@@ -191,7 +190,12 @@ pub async fn search_crates_impl(
         .get(&full_url)
         .send()
         .await
-        .context("Failed to send search request to crates.io")?;
+        .map_err(|e| {
+            rustacean_docs_core::error::ErrorBuilder::network().http_request(
+                format!("Failed to send search request to crates.io: {e}"),
+                None,
+            )
+        })?;
 
     let response = handle_http_response(response, "crates.io search").await?;
     let crates_io_response: CratesIoSearchResponse =

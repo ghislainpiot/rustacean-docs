@@ -1,5 +1,5 @@
 use reqwest::Response;
-use rustacean_docs_core::{error::ErrorContext, Error, Result};
+use rustacean_docs_core::{ErrorBuilder, ErrorContext, Result};
 use tracing::warn;
 use url::Url;
 
@@ -20,9 +20,10 @@ pub(crate) async fn handle_http_response(response: Response, context: &str) -> R
         );
 
         let error = match status.as_u16() {
-            404 => Error::crate_not_found("Resource not found"),
-            429 => Error::RateLimit,
-            _ => Error::http_request(
+            404 => ErrorBuilder::docs()
+                .crate_not_found(rustacean_docs_core::CrateName::new("unknown").unwrap()),
+            429 => ErrorBuilder::network().rate_limit(None),
+            _ => ErrorBuilder::network().http_request(
                 format!("{context}: HTTP {status}: {body}"),
                 Some(status.as_u16()),
             ),
@@ -36,10 +37,9 @@ pub(crate) async fn parse_json_response<T>(response: Response, context: &str) ->
 where
     T: serde::de::DeserializeOwned,
 {
-    response
-        .json::<T>()
-        .await
-        .with_context(|| format!("Failed to parse JSON response: {context}"))
+    response.json::<T>().await.map_err(|e| {
+        ErrorBuilder::docs().parse_error(format!("Failed to parse JSON response: {context}: {e}"))
+    })
 }
 
 /// Build docs.rs URL with standard error handling
@@ -123,7 +123,13 @@ mod tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            Error::CrateNotFound { .. } => {} // Expected
+            rustacean_docs_core::Error::Docs(docs_err) => {
+                if let rustacean_docs_core::error::DocsError::CrateNotFound { .. } = docs_err {
+                    // Expected
+                } else {
+                    panic!("Expected CrateNotFound error, got: {:?}", docs_err);
+                }
+            }
             other => panic!("Expected CrateNotFound error, got: {other:?}"),
         }
 
@@ -151,7 +157,13 @@ mod tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            Error::RateLimit => {} // Expected
+            rustacean_docs_core::Error::Network(network_err) => {
+                if let rustacean_docs_core::error::NetworkError::RateLimit { .. } = network_err {
+                    // Expected
+                } else {
+                    panic!("Expected RateLimit error, got: {:?}", network_err);
+                }
+            }
             other => panic!("Expected RateLimit error, got: {other:?}"),
         }
 

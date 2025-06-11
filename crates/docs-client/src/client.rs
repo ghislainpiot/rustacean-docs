@@ -1,5 +1,5 @@
 use reqwest::{header, Client, ClientBuilder, Response};
-use rustacean_docs_core::{error::ErrorContext, Result};
+use rustacean_docs_core::{ErrorBuilder, Result};
 use std::time::Duration;
 use tracing::{debug, trace, warn};
 
@@ -78,7 +78,9 @@ impl DocsClient {
         headers.insert(
             header::USER_AGENT,
             header::HeaderValue::from_str(&config.user_agent).map_err(|e| {
-                rustacean_docs_core::Error::internal(format!("Invalid user agent string: {e}"))
+                rustacean_docs_core::error::ErrorBuilder::internal(format!(
+                    "Invalid user agent string: {e}"
+                ))
             })?,
         );
 
@@ -111,9 +113,9 @@ impl DocsClient {
             client_builder = client_builder.no_gzip();
         }
 
-        client_builder
-            .build()
-            .context("Failed to build HTTP client")
+        client_builder.build().map_err(|e| {
+            rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
+        })
     }
 
     /// Get a reference to the client configuration
@@ -151,12 +153,9 @@ impl DocsClient {
 
         trace!(url = %url, "Making GET request");
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to send GET request")?;
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
+        })?;
 
         let status = response.status();
 
@@ -173,27 +172,23 @@ impl DocsClient {
                 status = %status,
                 "GET request failed with client error"
             );
-            Err(rustacean_docs_core::Error::http_request(
-                format!("Client error: {status}"),
-                Some(status.as_u16()),
-            ))
+            Err(ErrorBuilder::network()
+                .http_request(format!("Client error: {status}"), Some(status.as_u16())))
         } else if status.is_server_error() {
             warn!(
                 url = %url,
                 status = %status,
                 "GET request failed with server error"
             );
-            Err(rustacean_docs_core::Error::http_request(
-                format!("Server error: {status}"),
-                Some(status.as_u16()),
-            ))
+            Err(ErrorBuilder::network()
+                .http_request(format!("Server error: {status}"), Some(status.as_u16())))
         } else {
             warn!(
                 url = %url,
                 status = %status,
                 "GET request failed with unexpected status"
             );
-            Err(rustacean_docs_core::Error::http_request(
+            Err(ErrorBuilder::network().http_request(
                 format!("Unexpected status: {status}"),
                 Some(status.as_u16()),
             ))
@@ -203,10 +198,9 @@ impl DocsClient {
     /// Perform a GET request and return the response as text
     pub async fn get_text(&self, path: &str) -> Result<String> {
         let response = self.get(path).await?;
-        let text = response
-            .text()
-            .await
-            .context("Failed to read response as text")?;
+        let text = response.text().await.map_err(|e| {
+            rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
+        })?;
 
         trace!(
             path = %path,
@@ -223,10 +217,9 @@ impl DocsClient {
         T: serde::de::DeserializeOwned,
     {
         let response = self.get(path).await?;
-        let json = response
-            .json::<T>()
-            .await
-            .context("Failed to parse response as JSON")?;
+        let json = response.json::<T>().await.map_err(|e| {
+            rustacean_docs_core::Error::from(rustacean_docs_core::NetworkError::from(e))
+        })?;
 
         trace!(
             path = %path,
@@ -452,8 +445,15 @@ mod tests {
 
             let error = response.unwrap_err();
             match error {
-                rustacean_docs_core::Error::HttpRequest { status, .. } => {
-                    assert_eq!(status, Some(404));
+                rustacean_docs_core::Error::Network(network_err) => {
+                    if let rustacean_docs_core::error::NetworkError::HttpRequest {
+                        status, ..
+                    } = network_err
+                    {
+                        assert_eq!(status, Some(404));
+                    } else {
+                        panic!("Expected HttpRequest error, got: {:?}", network_err);
+                    }
                 }
                 _ => panic!("Expected HttpRequest error, got: {error:?}"),
             }
@@ -479,8 +479,15 @@ mod tests {
 
             let error = response.unwrap_err();
             match error {
-                rustacean_docs_core::Error::HttpRequest { status, .. } => {
-                    assert_eq!(status, Some(500));
+                rustacean_docs_core::Error::Network(network_err) => {
+                    if let rustacean_docs_core::error::NetworkError::HttpRequest {
+                        status, ..
+                    } = network_err
+                    {
+                        assert_eq!(status, Some(500));
+                    } else {
+                        panic!("Expected HttpRequest error, got: {:?}", network_err);
+                    }
                 }
                 _ => panic!("Expected HttpRequest error, got: {error:?}"),
             }

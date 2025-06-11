@@ -11,8 +11,8 @@ pub struct CrateDocsCacheKey {
 impl CrateDocsCacheKey {
     pub fn new(request: &CrateDocsRequest) -> Self {
         Self {
-            crate_name: request.crate_name.clone(),
-            version: request.version.clone(),
+            crate_name: request.crate_name.to_string(),
+            version: request.version.as_ref().map(|v| v.to_string()),
         }
     }
 }
@@ -28,9 +28,9 @@ pub struct ItemDocsCacheKey {
 impl ItemDocsCacheKey {
     pub fn new(request: &ItemDocsRequest) -> Self {
         Self {
-            crate_name: request.crate_name.clone(),
-            item_path: request.item_path.clone(),
-            version: request.version.clone(),
+            crate_name: request.crate_name.to_string(),
+            item_path: request.item_path.to_string(),
+            version: request.version.as_ref().map(|v| v.to_string()),
         }
     }
 }
@@ -59,9 +59,12 @@ mod tests {
 
     #[test]
     fn test_crate_docs_cache_key() {
-        let request1 = CrateDocsRequest::new("tokio");
-        let request2 = CrateDocsRequest::with_version("tokio", "1.0.0");
-        let request3 = CrateDocsRequest::new("serde");
+        let request1 = CrateDocsRequest::new(rustacean_docs_core::CrateName::new("tokio").unwrap());
+        let request2 = CrateDocsRequest::with_version(
+            rustacean_docs_core::CrateName::new("tokio").unwrap(),
+            rustacean_docs_core::Version::new("1.0.0").unwrap(),
+        );
+        let request3 = CrateDocsRequest::new(rustacean_docs_core::CrateName::new("serde").unwrap());
 
         let key1 = CrateDocsCacheKey::new(&request1);
         let key2 = CrateDocsCacheKey::new(&request2);
@@ -82,9 +85,19 @@ mod tests {
 
     #[test]
     fn test_item_docs_cache_key() {
-        let request1 = ItemDocsRequest::new("tokio", "spawn");
-        let request2 = ItemDocsRequest::with_version("tokio", "spawn", "1.0.0");
-        let request3 = ItemDocsRequest::new("tokio", "join");
+        let request1 = ItemDocsRequest::new(
+            rustacean_docs_core::CrateName::new("tokio").unwrap(),
+            rustacean_docs_core::ItemPath::new("spawn").unwrap(),
+        );
+        let request2 = ItemDocsRequest::with_version(
+            rustacean_docs_core::CrateName::new("tokio").unwrap(),
+            rustacean_docs_core::ItemPath::new("spawn").unwrap(),
+            rustacean_docs_core::Version::new("1.0.0").unwrap(),
+        );
+        let request3 = ItemDocsRequest::new(
+            rustacean_docs_core::CrateName::new("tokio").unwrap(),
+            rustacean_docs_core::ItemPath::new("join").unwrap(),
+        );
 
         let key1 = ItemDocsCacheKey::new(&request1);
         let key2 = ItemDocsCacheKey::new(&request2);
