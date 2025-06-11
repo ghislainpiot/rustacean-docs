@@ -5,10 +5,17 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, instrument};
 
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{endpoints::releases::ReleasesService, DocsClient};
 use rustacean_docs_core::{models::docs::RecentReleasesRequest, Error};
 
-use super::{ParameterValidator, ServerCache, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
+    ToolInput,
+};
+
+// Type alias for our specific cache implementation
+type ServerCache = TieredCache<String, Value>;
 
 /// Input parameters for the list_recent_releases tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,40 +56,63 @@ impl RecentReleasesTool {
 
 #[async_trait::async_trait]
 impl ToolHandler for RecentReleasesTool {
-    #[instrument(skip(self, client, _cache))]
+    #[instrument(skip(self, client, cache))]
     async fn execute(
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<ServerCache>>,
+        cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
-        debug!("Executing recent releases tool with params: {:?}", params);
+        debug!(
+            "Executing list_recent_releases tool with params: {:?}",
+            params
+        );
 
         // Parse input parameters
-        let input: ReleasesToolInput =
-            serde_json::from_value(params.clone()).unwrap_or(ReleasesToolInput { limit: None });
+        let input: ReleasesToolInput = serde_json::from_value(params.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::parameter_parsing_context("list_recent_releases"),
+                e
+            )
+        })?;
 
         debug!(
             limit = input.limit,
             "Fetching recent releases from crates.io API"
         );
 
-        // Create releases service with cache
-        let releases_service = ReleasesService::new((**client).clone());
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "list_recent_releases",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Create releases service with cloned client
+                let releases_service = ReleasesService::new((*client).clone());
 
-        // Create request
-        let request = input.to_request();
+                // Create request
+                let request = input.to_request();
 
-        // Use ReleasesService directly - it handles caching internally
-        let response = releases_service.get_recent_releases(&request).await?;
+                // Fetch recent releases
+                let response = releases_service
+                    .get_recent_releases(&request)
+                    .await
+                    .tool_context("list_recent_releases", "fetch recent releases")?;
 
-        debug!(
-            release_count = response.releases.len(),
-            "Successfully retrieved recent releases from crates.io"
-        );
+                debug!(
+                    release_count = response.releases.len(),
+                    "Successfully retrieved recent releases from crates.io"
+                );
 
-        // Serialize response to JSON - no manual transformation needed
-        Ok(serde_json::to_value(response)?)
+                // Serialize response to JSON
+                Ok(serde_json::to_value(response)?)
+            },
+        )
+        .await
     }
 
     fn description(&self) -> &str {
@@ -94,7 +124,7 @@ impl ToolHandler for RecentReleasesTool {
             "type": "object",
             "properties": {
                 "limit": {
-                    "type": "number",
+                    "type": "integer",
                     "description": "Maximum number of releases to return (default: 20, max: 100)",
                     "minimum": 1,
                     "maximum": 100,
@@ -132,7 +162,7 @@ mod tests {
 
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["limit"].is_object());
-        assert_eq!(schema["properties"]["limit"]["type"], "number");
+        assert_eq!(schema["properties"]["limit"]["type"], "integer");
         assert_eq!(schema["properties"]["limit"]["minimum"], 1);
         assert_eq!(schema["properties"]["limit"]["maximum"], 100);
         assert_eq!(schema["properties"]["limit"]["default"], 20);

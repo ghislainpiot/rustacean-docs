@@ -70,6 +70,7 @@ This is a new Rust project focused on documentation (based on the "rustacean-doc
 
 - Keep references to tasks or Claude Code out of the code and commit messages
 - When fixing a bug, try to make a minimal test reproducing it to avoid future regressions
+- When changing tests, be very intentional about it. The goal is to have a working product, not passing tests that are incorrect.
 
 ## Debugging MCP Tools
 

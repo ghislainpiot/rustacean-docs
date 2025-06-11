@@ -13,7 +13,7 @@ use rustacean_docs_core::{
 };
 
 use crate::tools::{
-    CacheConfig, CacheStrategy, ClientFactory, ErrorHandler, ParameterValidator, ToolHandler,
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
     ToolInput,
 };
 
@@ -395,32 +395,31 @@ impl ToolHandler for CrateMetadataTool {
             CacheConfig::default(),
             client,
             cache,
-            |input, _client| async move {
+            |input, client| async move {
                 // Convert to request
                 let request = input.to_request();
 
-                // Create metadata service and fetch real data
-                // Note: We create a new client since MetadataService takes ownership
-                let new_client = ClientFactory::create_owned_client()?;
-                let metadata_service = MetadataService::new(new_client);
+                // Create metadata service with cloned client
+                let metadata_service = MetadataService::new((*client).clone());
 
-                match metadata_service.get_crate_metadata(&request).await {
-                    Ok(metadata) => {
-                        let formatted_response =
-                            CrateMetadataTool::format_metadata_response_static(&metadata);
+                let metadata = metadata_service
+                    .get_crate_metadata(&request)
+                    .await
+                    .crate_context(
+                        "fetch metadata",
+                        &request.crate_name,
+                        request.version.as_deref(),
+                    )?;
 
-                        Ok(json!({
-                            "status": "success",
-                            "crate_name": request.crate_name,
-                            "version": request.version.unwrap_or_else(|| "latest".to_string()),
-                            "metadata": formatted_response
-                        }))
-                    }
-                    Err(e) => {
-                        debug!("Failed to fetch metadata: {}", e);
-                        Err(anyhow::anyhow!("Failed to fetch metadata: {}", e))
-                    }
-                }
+                let formatted_response =
+                    CrateMetadataTool::format_metadata_response_static(&metadata);
+
+                Ok(json!({
+                    "status": "success",
+                    "crate_name": request.crate_name,
+                    "version": request.version.unwrap_or_else(|| "latest".to_string()),
+                    "metadata": formatted_response
+                }))
             },
         )
         .await
@@ -443,7 +442,8 @@ impl ToolHandler for CrateMetadataTool {
                     "description": "Specific version to query (defaults to latest stable version)"
                 }
             },
-            "required": ["crate_name"]
+            "required": ["crate_name"],
+            "additionalProperties": false
         })
     }
 }

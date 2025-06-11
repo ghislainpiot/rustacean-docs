@@ -1,12 +1,71 @@
-use super::ToolHandler;
 use anyhow::Result;
-use rustacean_docs_cache::TieredCache;
-use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
-use rustacean_docs_core::models::docs::ItemDocsRequest;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::debug;
+
+use rustacean_docs_cache::TieredCache;
+use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
+use rustacean_docs_core::{models::docs::ItemDocsRequest, Error};
+
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
+    ToolInput,
+};
+
+// Type alias for our specific cache implementation
+type ServerCache = TieredCache<String, Value>;
+
+/// Input parameters for the get_item_docs tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemDocsToolInput {
+    /// Name of the crate (e.g., "serde")
+    pub crate_name: String,
+    /// Item identifier - can be simple name ("Serialize") or full path ("de/struct.Error.html")
+    pub item_path: String,
+    /// Specific version to query (defaults to latest stable version)
+    pub version: Option<String>,
+}
+
+impl ToolInput for ItemDocsToolInput {
+    fn validate(&self) -> Result<(), Error> {
+        ParameterValidator::validate_crate_name(&self.crate_name, "get_item_docs")?;
+        if self.item_path.trim().is_empty() {
+            return Err(Error::invalid_input(
+                "get_item_docs",
+                "item_path cannot be empty",
+            ));
+        }
+        ParameterValidator::validate_version(&self.version, "get_item_docs")?;
+        Ok(())
+    }
+
+    fn cache_key(&self, tool_name: &str) -> String {
+        match &self.version {
+            Some(version) => format!(
+                "{}:{}:{}:{}",
+                tool_name, self.crate_name, self.item_path, version
+            ),
+            None => format!(
+                "{}:{}:{}:latest",
+                tool_name, self.crate_name, self.item_path
+            ),
+        }
+    }
+}
+
+impl ItemDocsToolInput {
+    /// Convert to internal ItemDocsRequest
+    pub fn to_item_docs_request(&self) -> ItemDocsRequest {
+        match &self.version {
+            Some(version) => {
+                ItemDocsRequest::with_version(&self.crate_name, &self.item_path, version)
+            }
+            None => ItemDocsRequest::new(&self.crate_name, &self.item_path),
+        }
+    }
+}
 
 /// Tool handler for retrieving specific item documentation
 pub struct ItemDocsTool;
@@ -29,62 +88,70 @@ impl ToolHandler for ItemDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<TieredCache<String, Value>>>,
+        cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
-        trace!(params = ?params, "Executing item docs tool");
+        debug!("Executing get_item_docs tool with params: {}", params);
 
-        // Parse parameters
-        let crate_name = params
-            .get("crate_name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: crate_name"))?;
-
-        let item_path = params
-            .get("item_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: item_path"))?;
-
-        let version = params
-            .get("version")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Create docs service with cache
-        let docs_service = DocsService::new(
-            (**client).clone(),
-            100,                                  // cache capacity
-            std::time::Duration::from_secs(3600), // 1 hour TTL
-        );
-
-        // Create request
-        let request = if let Some(version) = version {
-            ItemDocsRequest::with_version(crate_name, item_path, &version)
-        } else {
-            ItemDocsRequest::new(crate_name, item_path)
-        };
+        // Parse input parameters
+        let input: ItemDocsToolInput = serde_json::from_value(params.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "{}: {}",
+                ErrorHandler::parameter_parsing_context("get_item_docs"),
+                e
+            )
+        })?;
 
         debug!(
-            crate_name = %request.crate_name,
-            item_path = %request.item_path,
-            version = ?request.version,
-            "Getting item documentation"
+            crate_name = %input.crate_name,
+            item_path = %input.item_path,
+            version = ?input.version,
+            "Processing item docs request"
         );
 
-        // Use DocsService directly - it handles caching internally
-        let response = docs_service.get_item_docs(request).await?;
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "get_item_docs",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Create docs service without internal cache since we're using server-level cache
+                let docs_service = DocsService::new(
+                    (*client).clone(),
+                    0,                                 // disable internal cache
+                    std::time::Duration::from_secs(0), // no TTL needed
+                );
 
-        debug!(
-            crate_name = %response.crate_name,
-            item_name = %response.name,
-            has_signature = response.signature.is_some(),
-            has_description = response.description.is_some(),
-            examples_count = response.examples.len(),
-            related_items_count = response.related_items.len(),
-            "Item documentation retrieved successfully"
-        );
+                // Convert to item docs request
+                let request = input.to_item_docs_request();
 
-        // Serialize response to JSON - no manual transformation needed
-        Ok(serde_json::to_value(response)?)
+                // Fetch item documentation
+                let response = docs_service
+                    .get_item_docs(request.clone())
+                    .await
+                    .crate_context(
+                        "fetch item documentation",
+                        &request.crate_name,
+                        request.version.as_deref(),
+                    )?;
+
+                debug!(
+                    crate_name = %response.crate_name,
+                    item_name = %response.name,
+                    has_signature = response.signature.is_some(),
+                    has_description = response.description.is_some(),
+                    examples_count = response.examples.len(),
+                    related_items_count = response.related_items.len(),
+                    "Item documentation retrieved successfully"
+                );
+
+                // Serialize response to JSON
+                Ok(serde_json::to_value(response)?)
+            },
+        )
+        .await
     }
 
     fn description(&self) -> &str {
@@ -108,7 +175,8 @@ impl ToolHandler for ItemDocsTool {
                     "description": "Specific version to query (defaults to latest stable version)"
                 }
             },
-            "required": ["crate_name", "item_path"]
+            "required": ["crate_name", "item_path"],
+            "additionalProperties": false
         })
     }
 }
@@ -116,8 +184,9 @@ impl ToolHandler for ItemDocsTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    async fn create_test_cache() -> Arc<RwLock<TieredCache<String, Value>>> {
+    async fn create_test_cache() -> Arc<RwLock<ServerCache>> {
         let temp_dir = std::env::temp_dir().join("item_docs_test_cache");
         if temp_dir.exists() {
             std::fs::remove_dir_all(&temp_dir).ok();
@@ -170,7 +239,7 @@ mod tests {
             }
         }
 
-        let cache = TieredCache::new(
+        let cache = ServerCache::new(
             vec![
                 Box::new(MemoryCacheWrapper(memory_cache)),
                 Box::new(disk_cache),
@@ -206,6 +275,83 @@ mod tests {
         assert!(!required.contains(&json!("version"))); // version is optional
     }
 
+    #[test]
+    fn test_item_docs_tool_input_validation() {
+        // Valid input
+        let valid_input = ItemDocsToolInput {
+            crate_name: "tokio".to_string(),
+            item_path: "spawn".to_string(),
+            version: Some("1.0.0".to_string()),
+        };
+        assert!(valid_input.validate().is_ok());
+
+        // Empty crate name
+        let empty_crate = ItemDocsToolInput {
+            crate_name: "".to_string(),
+            item_path: "spawn".to_string(),
+            version: None,
+        };
+        assert!(empty_crate.validate().is_err());
+
+        // Empty item path
+        let empty_path = ItemDocsToolInput {
+            crate_name: "tokio".to_string(),
+            item_path: "".to_string(),
+            version: None,
+        };
+        assert!(empty_path.validate().is_err());
+
+        // Empty version
+        let empty_version = ItemDocsToolInput {
+            crate_name: "tokio".to_string(),
+            item_path: "spawn".to_string(),
+            version: Some("".to_string()),
+        };
+        assert!(empty_version.validate().is_err());
+    }
+
+    #[test]
+    fn test_item_docs_tool_input_to_request() {
+        let input_with_version = ItemDocsToolInput {
+            crate_name: "tokio".to_string(),
+            item_path: "spawn".to_string(),
+            version: Some("1.35.0".to_string()),
+        };
+        let request = input_with_version.to_item_docs_request();
+        assert_eq!(request.crate_name, "tokio");
+        assert_eq!(request.item_path, "spawn");
+        assert_eq!(request.version, Some("1.35.0".to_string()));
+
+        let input_no_version = ItemDocsToolInput {
+            crate_name: "serde".to_string(),
+            item_path: "Serialize".to_string(),
+            version: None,
+        };
+        let request = input_no_version.to_item_docs_request();
+        assert_eq!(request.crate_name, "serde");
+        assert_eq!(request.item_path, "Serialize");
+        assert_eq!(request.version, None);
+    }
+
+    #[test]
+    fn test_item_docs_tool_cache_key() {
+        let input1 = ItemDocsToolInput {
+            crate_name: "tokio".to_string(),
+            item_path: "spawn".to_string(),
+            version: Some("1.0.0".to_string()),
+        };
+        let key1 = input1.cache_key("item_docs");
+        assert_eq!(key1, "item_docs:tokio:spawn:1.0.0");
+
+        let input2 = ItemDocsToolInput {
+            crate_name: "serde".to_string(),
+            item_path: "Serialize".to_string(),
+            version: None,
+        };
+        let key2 = input2.cache_key("item_docs");
+        assert_eq!(key2, "item_docs:serde:Serialize:latest");
+    }
+
     #[tokio::test]
     async fn test_execute_missing_crate_name() {
         let tool = ItemDocsTool::new();
@@ -221,7 +367,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Missing required parameter: crate_name"));
+            .contains("Invalid input parameters"));
     }
 
     #[tokio::test]
@@ -239,7 +385,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Missing required parameter: item_path"));
+            .contains("Invalid input parameters"));
     }
 
     // Note: More comprehensive integration tests would require mock HTTP clients

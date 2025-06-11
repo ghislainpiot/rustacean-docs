@@ -56,7 +56,7 @@ impl CacheStatsTool {
 
     /// Assess overall cache performance
     fn assess_performance(&self, stats: &CacheStats) -> &'static str {
-        let hit_rate = stats.hit_rate();
+        let hit_rate = stats.hit_rate() * 100.0; // Convert to percentage
         match hit_rate {
             rate if rate >= 80.0 => "Excellent",
             rate if rate >= 60.0 => "Good",
@@ -68,7 +68,7 @@ impl CacheStatsTool {
 
     /// Get efficiency analysis
     fn get_efficiency_analysis(&self, stats: &CacheStats) -> Value {
-        let hit_rate = stats.hit_rate();
+        let hit_rate = stats.hit_rate() * 100.0; // Convert to percentage
         let utilization = stats.utilization();
 
         json!({
@@ -91,7 +91,7 @@ impl CacheStatsTool {
     /// Get recommendations for cache optimization
     fn get_recommendations(&self, stats: &CacheStats) -> Vec<&'static str> {
         let mut recommendations = Vec::new();
-        let hit_rate = stats.hit_rate();
+        let hit_rate = stats.hit_rate() * 100.0; // Convert to percentage
         let utilization = stats.utilization();
 
         if hit_rate < 50.0 {
@@ -150,7 +150,8 @@ impl ToolHandler for CacheStatsTool {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 }
@@ -208,7 +209,8 @@ impl ToolHandler for ClearCacheTool {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 }
@@ -261,7 +263,144 @@ impl ToolHandler for CacheInfoTool {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    async fn create_test_cache() -> Arc<RwLock<ServerCache>> {
+        let cache = ServerCache::new(vec![], rustacean_docs_cache::WriteStrategy::WriteThrough);
+        Arc::new(RwLock::new(cache))
+    }
+
+    #[test]
+    fn test_cache_stats_tool_creation() {
+        let tool = CacheStatsTool::new();
+        assert!(!tool.description().is_empty());
+        assert!(tool.parameters_schema().is_object());
+    }
+
+    #[test]
+    fn test_clear_cache_tool_creation() {
+        let tool = ClearCacheTool::new();
+        assert!(!tool.description().is_empty());
+        assert!(tool.parameters_schema().is_object());
+    }
+
+    #[test]
+    fn test_cache_info_tool_creation() {
+        let tool = CacheInfoTool::new();
+        assert!(!tool.description().is_empty());
+        assert!(tool.parameters_schema().is_object());
+    }
+
+    #[test]
+    fn test_tool_descriptions() {
+        let stats_tool = CacheStatsTool::new();
+        let clear_tool = ClearCacheTool::new();
+        let info_tool = CacheInfoTool::new();
+
+        assert!(stats_tool.description().contains("cache statistics"));
+        assert!(clear_tool.description().contains("Clear"));
+        assert!(info_tool.description().contains("cache configuration"));
+    }
+
+    #[test]
+    fn test_cache_stats_performance_assessment() {
+        let tool = CacheStatsTool::new();
+
+        // Test different performance levels
+        let excellent_stats = rustacean_docs_cache::CacheStats {
+            hits: 90,
+            misses: 10,
+            size: 50,
+            capacity: 100,
+        };
+        assert_eq!(tool.assess_performance(&excellent_stats), "Excellent");
+
+        let poor_stats = rustacean_docs_cache::CacheStats {
+            hits: 20,
+            misses: 80,
+            size: 10,
+            capacity: 100,
+        };
+        assert_eq!(tool.assess_performance(&poor_stats), "Poor");
+    }
+
+    #[tokio::test]
+    async fn test_cache_stats_tool_execution() {
+        let tool = CacheStatsTool::new();
+        let client = Arc::new(DocsClient::new().unwrap());
+        let cache = create_test_cache().await;
+
+        let params = json!({});
+        let result = tool.execute(params, &client, &cache).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response["summary"].is_object());
+        assert!(response["cache"].is_object());
+        assert!(response["analysis"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_clear_cache_tool_execution() {
+        let tool = ClearCacheTool::new();
+        let client = Arc::new(DocsClient::new().unwrap());
+        let cache = create_test_cache().await;
+
+        let params = json!({});
+        let result = tool.execute(params, &client, &cache).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response["success"], true);
+        assert!(response["message"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_cache_info_tool_execution() {
+        let tool = CacheInfoTool::new();
+        let client = Arc::new(DocsClient::new().unwrap());
+        let cache = create_test_cache().await;
+
+        let params = json!({});
+        let result = tool.execute(params, &client, &cache).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response["cache_type"], "TieredCache");
+        assert!(response["current_size"].is_number());
+        assert!(response["capacity"].is_number());
+        assert!(response["status"].is_string());
+    }
+
+    #[test]
+    fn test_parameters_schemas() {
+        let stats_tool = CacheStatsTool::new();
+        let clear_tool = ClearCacheTool::new();
+        let info_tool = CacheInfoTool::new();
+
+        // Test each tool's schema individually
+        let stats_schema = stats_tool.parameters_schema();
+        assert_eq!(stats_schema["type"], "object");
+        assert!(stats_schema["properties"].is_object());
+        assert_eq!(stats_schema["required"].as_array().unwrap().len(), 0);
+
+        let clear_schema = clear_tool.parameters_schema();
+        assert_eq!(clear_schema["type"], "object");
+        assert!(clear_schema["properties"].is_object());
+        assert_eq!(clear_schema["required"].as_array().unwrap().len(), 0);
+
+        let info_schema = info_tool.parameters_schema();
+        assert_eq!(info_schema["type"], "object");
+        assert!(info_schema["properties"].is_object());
+        assert_eq!(info_schema["required"].as_array().unwrap().len(), 0);
     }
 }

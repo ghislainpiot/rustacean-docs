@@ -3,13 +3,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::debug;
 
-use rustacean_docs_cache::{Cache, TieredCache};
+use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::DocsClient;
 use rustacean_docs_core::{models::search::SearchRequest, Error};
 
-use crate::tools::{ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
+    ToolInput,
+};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -62,7 +65,7 @@ impl ToolHandler for SearchTool {
         client: &Arc<DocsClient>,
         cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
-        trace!("Executing search tool with params: {}", params);
+        debug!("Executing search_crate tool with params: {}", params);
 
         // Parse input parameters
         let input: SearchToolInput = serde_json::from_value(params.clone()).map_err(|e| {
@@ -73,69 +76,42 @@ impl ToolHandler for SearchTool {
             )
         })?;
 
-        // Validate input parameters
-        input.validate().map_err(|e| anyhow::anyhow!("{}", e))?;
-
         debug!(
             query = %input.query,
             limit = input.limit,
             "Processing search request"
         );
 
-        // Generate cache key
-        let cache_key = input.cache_key("search_crate");
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "search_crate",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Convert to search request
+                let search_request = input.to_search_request();
 
-        // Try to get from server cache first
-        {
-            let cache_read = cache.read().await;
-            if let Ok(Some(cached_value)) = cache_read.get(&cache_key).await {
-                trace!(
+                // Execute search
+                let search_response = client
+                    .search_crates(search_request)
+                    .await
+                    .search_context(&input.query)?;
+
+                debug!(
                     query = %input.query,
-                    limit = input.limit,
-                    cache_key = %cache_key,
-                    "Search cache hit"
+                    total_results = search_response.total.unwrap_or(0),
+                    returned_results = search_response.results.len(),
+                    "Search completed successfully"
                 );
-                return Ok(cached_value);
-            }
-        }
 
-        trace!(
-            query = %input.query,
-            limit = input.limit,
-            cache_key = %cache_key,
-            "Search cache miss, fetching from API"
-        );
-
-        // Cache miss - fetch directly from client
-        let search_request = input.to_search_request();
-        let search_response = client
-            .search_crates(search_request)
-            .await
-            .search_context(&input.query)?;
-
-        debug!(
-            query = %input.query,
-            total_results = search_response.total.unwrap_or(0),
-            returned_results = search_response.results.len(),
-            "Search completed successfully"
-        );
-
-        // Serialize response to JSON for caching
-        let json_value = serde_json::to_value(&search_response)?;
-
-        // Store in server cache for future requests
-        {
-            let cache_write = cache.write().await;
-            let _ = cache_write.insert(cache_key.clone(), json_value.clone()).await;
-        }
-
-        trace!(
-            query = %input.query,
-            cache_key = %cache_key,
-            "Search result cached"
-        );
-
-        Ok(json_value)
+                // Return standardized response format
+                Ok(serde_json::to_value(&search_response)?)
+            },
+        )
+        .await
     }
 
     fn description(&self) -> &str {

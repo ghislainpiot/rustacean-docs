@@ -3,13 +3,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::debug;
 
 use rustacean_docs_cache::TieredCache;
 use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
 use rustacean_docs_core::{models::docs::CrateDocsRequest, Error};
 
-use crate::tools::{ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
+use crate::tools::{
+    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
+    ToolInput,
+};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -63,9 +66,9 @@ impl ToolHandler for CrateDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        _cache: &Arc<RwLock<ServerCache>>,
+        cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
-        trace!("Executing crate docs tool with params: {}", params);
+        debug!("Executing get_crate_docs tool with params: {}", params);
 
         // Parse input parameters
         let input: CrateDocsToolInput = serde_json::from_value(params.clone()).map_err(|e| {
@@ -76,45 +79,54 @@ impl ToolHandler for CrateDocsTool {
             )
         })?;
 
-        // Validate input
-        input
-            .validate()
-            .map_err(|e| anyhow::anyhow!("Validation error: {}", e))?;
-
         debug!(
             crate_name = %input.crate_name,
             version = ?input.version,
             "Processing crate docs request"
         );
 
-        // Create docs service with cache
-        let docs_service = DocsService::new(
-            (**client).clone(),
-            100,                                  // cache capacity
-            std::time::Duration::from_secs(3600), // 1 hour TTL
-        );
+        // Use unified cache strategy
+        CacheStrategy::execute_with_cache(
+            "get_crate_docs",
+            params,
+            input,
+            CacheConfig::default(),
+            client,
+            cache,
+            |input, client| async move {
+                // Create docs service without internal cache since we're using server-level cache
+                let docs_service = DocsService::new(
+                    (*client).clone(),
+                    0,                                 // disable internal cache
+                    std::time::Duration::from_secs(0), // no TTL needed
+                );
 
-        // Use DocsService directly - it handles caching internally
-        let docs_request = input.to_crate_docs_request();
-        let docs_response = docs_service
-            .get_crate_docs(docs_request)
-            .await
-            .crate_context(
-                "fetch documentation",
-                &input.crate_name,
-                input.version.as_deref(),
-            )?;
+                // Convert to docs request
+                let docs_request = input.to_crate_docs_request();
 
-        debug!(
-            crate_name = %docs_response.name,
-            version = %docs_response.version,
-            item_count = docs_response.items.len(),
-            example_count = docs_response.examples.len(),
-            "Crate documentation fetched successfully"
-        );
+                // Fetch documentation
+                let docs_response = docs_service
+                    .get_crate_docs(docs_request)
+                    .await
+                    .crate_context(
+                        "fetch documentation",
+                        &input.crate_name,
+                        input.version.as_deref(),
+                    )?;
 
-        // Serialize response to JSON - no manual transformation needed
-        Ok(serde_json::to_value(docs_response)?)
+                debug!(
+                    crate_name = %docs_response.name,
+                    version = %docs_response.version,
+                    item_count = docs_response.items.len(),
+                    example_count = docs_response.examples.len(),
+                    "Crate documentation fetched successfully"
+                );
+
+                // Serialize response to JSON
+                Ok(serde_json::to_value(docs_response)?)
+            },
+        )
+        .await
     }
 
     fn description(&self) -> &str {
