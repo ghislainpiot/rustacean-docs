@@ -6,16 +6,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
 use rustacean_docs_cache::TieredCache;
-use rustacean_docs_client::DocsClient;
-use rustacean_docs_core::{
-    models::search::{SearchRequest, SearchResponse},
-    Error,
-};
+use rustacean_docs_client::{endpoints::search::SearchService, DocsClient};
+use rustacean_docs_core::{models::search::SearchRequest, Error};
 
-use crate::tools::{
-    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ResponseBuilder,
-    ToolErrorContext, ToolHandler, ToolInput,
-};
+use crate::tools::{ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -58,36 +52,6 @@ impl SearchTool {
     pub fn new() -> Self {
         Self
     }
-
-    /// Transform SearchResponse to JSON value for MCP protocol
-    fn response_to_json(response: SearchResponse) -> Value {
-        let results: Vec<Value> = response
-            .results
-            .iter()
-            .map(|result| {
-                serde_json::json!({
-                    "name": result.name,
-                    "version": result.version,
-                    "description": result.description,
-                    "docs_url": result.docs_url,
-                    "download_count": result.download_count,
-                    "last_updated": result.last_updated,
-                    "repository": result.repository,
-                    "homepage": result.homepage,
-                    "keywords": result.keywords,
-                    "categories": result.categories
-                })
-            })
-            .collect();
-
-        // Use the response builder for consistent formatting
-        ResponseBuilder::paginated(
-            results,
-            response.total,
-            None, // page not applicable for search
-            Some(response.results.len()),
-        )
-    }
 }
 
 #[async_trait::async_trait]
@@ -96,7 +60,7 @@ impl ToolHandler for SearchTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<ServerCache>>,
+        _cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         trace!("Executing search tool with params: {}", params);
 
@@ -109,41 +73,38 @@ impl ToolHandler for SearchTool {
             )
         })?;
 
+        // Validate input parameters
+        input.validate().map_err(|e| anyhow::anyhow!("{}", e))?;
+
         debug!(
             query = %input.query,
             limit = input.limit,
             "Processing search request"
         );
 
-        // Use unified cache strategy
-        CacheStrategy::execute_with_cache(
-            "search",
-            params,
-            input,
-            CacheConfig::default(),
-            client,
-            cache,
-            |input, client| async move {
-                // Fetch from API
-                let search_request = input.to_search_request();
-                let search_response = client
-                    .search_crates(search_request)
-                    .await
-                    .search_context(&input.query)?;
+        // Create search service with cache
+        let search_service = SearchService::new(
+            (**client).clone(),
+            100,                                 // cache capacity
+            std::time::Duration::from_secs(300), // 5 minutes TTL
+        );
 
-                debug!(
-                    query = %input.query,
-                    total_results = search_response.total.unwrap_or(0),
-                    returned_results = search_response.results.len(),
-                    "Search completed successfully"
-                );
+        // Use SearchService directly - it handles caching internally
+        let search_request = input.to_search_request();
+        let search_response = search_service
+            .search_crates(search_request)
+            .await
+            .search_context(&input.query)?;
 
-                // Transform response to JSON
-                let json_response = Self::response_to_json(search_response);
-                Ok(json_response)
-            },
-        )
-        .await
+        debug!(
+            query = %input.query,
+            total_results = search_response.total.unwrap_or(0),
+            returned_results = search_response.results.len(),
+            "Search completed successfully"
+        );
+
+        // Serialize response to JSON - no manual transformation needed
+        Ok(serde_json::to_value(search_response)?)
     }
 
     fn description(&self) -> &str {
@@ -353,50 +314,13 @@ mod tests {
         assert_eq!(limit_prop["default"], 10);
     }
 
-    #[test]
-    fn test_search_tool_response_to_json() {
-        use chrono::Utc;
-        use rustacean_docs_core::models::search::{CrateSearchResult, SearchResponse};
-        use url::Url;
-
-        let search_result = CrateSearchResult {
-            name: "tokio".to_string(),
-            version: "1.0.0".to_string(),
-            description: Some("An event-driven, non-blocking I/O platform".to_string()),
-            docs_url: Some(Url::parse("https://docs.rs/tokio").unwrap()),
-            download_count: Some(50000000),
-            last_updated: Some(Utc::now()),
-            repository: Some(Url::parse("https://github.com/tokio-rs/tokio").unwrap()),
-            homepage: Some(Url::parse("https://tokio.rs").unwrap()),
-            keywords: vec!["async".to_string(), "io".to_string()],
-            categories: vec!["asynchronous".to_string()],
-        };
-
-        let search_response = SearchResponse::with_total(vec![search_result], 1);
-        let json = SearchTool::response_to_json(search_response);
-
-        assert!(json["data"]["items"].is_array());
-        assert_eq!(json["data"]["items"].as_array().unwrap().len(), 1);
-        assert_eq!(json["data"]["pagination"]["total"], 1);
-        assert!(json["data"]["pagination"].is_object());
-
-        let result = &json["data"]["items"][0];
-        assert_eq!(result["name"], "tokio");
-        assert_eq!(result["version"], "1.0.0");
-        assert_eq!(
-            result["description"],
-            "An event-driven, non-blocking I/O platform"
-        );
-        assert_eq!(result["docs_url"], "https://docs.rs/tokio");
-    }
-
     // Mock tests to ensure the structure is correct
     #[tokio::test]
     async fn test_search_tool_structure() {
         let tool = SearchTool::new();
 
         // Test that we can create the tool
-        assert_eq!(tool.description().len() > 0, true);
+        assert!(!tool.description().is_empty());
 
         // Test schema is valid JSON
         let schema = tool.parameters_schema();
@@ -413,21 +337,13 @@ mod tests {
         use rustacean_docs_cache::TieredCache;
         use rustacean_docs_client::DocsClient;
         use serde_json::json;
-        use std::time::Duration;
 
         async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
             let client = DocsClient::new().unwrap();
-            let cache = Arc::new(RwLock::new(
-                TieredCache::new(
-                    50,                        // memory capacity
-                    Duration::from_secs(3600), // memory TTL
-                    1024 * 1024,               // disk max size (1MB)
-                    Duration::from_secs(7200), // disk TTL
-                    std::env::temp_dir().join("test_cache_search"),
-                )
-                .await
-                .unwrap(),
-            ));
+            let cache = Arc::new(RwLock::new(TieredCache::new(
+                vec![],
+                rustacean_docs_cache::WriteStrategy::WriteThrough,
+            )));
             (client, cache)
         }
 
@@ -452,15 +368,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_search_tool_cache_behavior() {
-            let (_client, cache) = create_test_environment().await;
-
-            // First, verify cache is empty
-            {
-                let cache_guard = cache.read().await;
-                let stats = cache_guard.stats().await.unwrap();
-                assert_eq!(stats.memory.size, 0);
-                assert_eq!(stats.disk.size, 0);
-            }
+            let (_client, _cache) = create_test_environment().await;
 
             // Test cache key generation
             let input = SearchToolInput {
@@ -471,21 +379,10 @@ mod tests {
             let cache_key = input.cache_key("search");
             assert_eq!(cache_key, "search:test-crate:20");
 
-            // Test that cache operations work
-            let test_value = json!({"test": "data"});
-            {
-                let cache_guard = cache.write().await;
-                cache_guard
-                    .insert(cache_key.clone(), test_value.clone())
-                    .await;
-            }
-
-            {
-                let cache_guard = cache.read().await;
-                let cached = cache_guard.get(&cache_key).await.unwrap();
-                assert!(cached.is_some());
-                assert_eq!(cached.unwrap(), test_value);
-            }
+            // Test that input can be converted to request
+            let request = input.to_search_request();
+            assert_eq!(request.query, "test-crate");
+            assert_eq!(request.limit(), 20);
         }
 
         #[tokio::test]

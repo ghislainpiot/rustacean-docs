@@ -3,15 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, instrument};
+use tracing::{debug, instrument};
 
-use rustacean_docs_client::{DocsClient, ReleasesService};
+use rustacean_docs_client::{endpoints::releases::ReleasesService, DocsClient};
 use rustacean_docs_core::{models::docs::RecentReleasesRequest, Error};
 
-use super::{
-    CacheConfig, CacheStrategy, ClientFactory, ParameterValidator, ResponseBuilder, ServerCache,
-    ToolHandler, ToolInput,
-};
+use super::{ParameterValidator, ServerCache, ToolHandler, ToolInput};
 
 /// Input parameters for the list_recent_releases tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,12 +49,12 @@ impl RecentReleasesTool {
 
 #[async_trait::async_trait]
 impl ToolHandler for RecentReleasesTool {
-    #[instrument(skip(self, client, cache))]
+    #[instrument(skip(self, client, _cache))]
     async fn execute(
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<ServerCache>>,
+        _cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         debug!("Executing recent releases tool with params: {:?}", params);
 
@@ -70,60 +67,22 @@ impl ToolHandler for RecentReleasesTool {
             "Fetching recent releases from crates.io API"
         );
 
-        // Use unified cache strategy
-        CacheStrategy::execute_with_cache(
-            "releases",
-            params,
-            input,
-            CacheConfig::default(),
-            client,
-            cache,
-            |input, _client| async move {
-                // Create request
-                let request = input.to_request();
+        // Create releases service with cache
+        let releases_service = ReleasesService::new((**client).clone());
 
-                // Create releases service and fetch real data
-                // Note: We create a new client since ReleasesService takes ownership
-                let new_client = ClientFactory::create_owned_client()?;
-                let releases_service = ReleasesService::new(new_client);
+        // Create request
+        let request = input.to_request();
 
-                // Make the API call
-                match releases_service.get_recent_releases(&request).await {
-                    Ok(response) => {
-                        debug!(
-                            release_count = response.releases.len(),
-                            "Successfully retrieved recent releases from crates.io"
-                        );
+        // Use ReleasesService directly - it handles caching internally
+        let response = releases_service.get_recent_releases(&request).await?;
 
-                        // Convert to JSON response using response builder
-                        let releases_data: Vec<Value> = response
-                            .releases
-                            .iter()
-                            .map(|release| {
-                                json!({
-                                    "name": release.name,
-                                    "version": release.version,
-                                    "description": release.description,
-                                    "published_at": release.published_at.to_rfc3339(),
-                                    "docs_url": release.docs_url.as_ref().map(|u| u.to_string())
-                                })
-                            })
-                            .collect();
+        debug!(
+            release_count = response.releases.len(),
+            "Successfully retrieved recent releases from crates.io"
+        );
 
-                        let result = ResponseBuilder::success(json!({
-                            "releases": releases_data
-                        }));
-
-                        Ok(result)
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Failed to fetch recent releases");
-                        Err(anyhow::anyhow!("Failed to fetch recent releases: {}", e))
-                    }
-                }
-            },
-        )
-        .await
+        // Serialize response to JSON - no manual transformation needed
+        Ok(serde_json::to_value(response)?)
     }
 
     fn description(&self) -> &str {
@@ -181,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_recent_releases_tool_default() {
-        let tool = RecentReleasesTool::default();
+        let tool = RecentReleasesTool;
         assert!(!tool.description().is_empty());
     }
 

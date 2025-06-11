@@ -180,7 +180,7 @@ mod tests {
         // Add some items
         for i in 0..5 {
             cache
-                .insert(format!("key{}", i), format!("value{}", i))
+                .insert(format!("key{i}"), format!("value{i}"))
                 .await
                 .unwrap();
         }

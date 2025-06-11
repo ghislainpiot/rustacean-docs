@@ -6,16 +6,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
 use rustacean_docs_cache::TieredCache;
-use rustacean_docs_client::DocsClient;
-use rustacean_docs_core::{
-    models::docs::{CrateDocsRequest, CrateDocsResponse},
-    Error,
-};
+use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
+use rustacean_docs_core::{models::docs::CrateDocsRequest, Error};
 
-use crate::tools::{
-    CacheConfig, CacheStrategy, ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler,
-    ToolInput,
-};
+use crate::tools::{ErrorHandler, ParameterValidator, ToolErrorContext, ToolHandler, ToolInput};
 
 // Type alias for our specific cache implementation
 type ServerCache = TieredCache<String, Value>;
@@ -61,52 +55,6 @@ impl CrateDocsTool {
     pub fn new() -> Self {
         Self
     }
-
-    /// Transform CrateDocsResponse to JSON value for MCP protocol
-    fn response_to_json(response: CrateDocsResponse) -> Value {
-        serde_json::json!({
-            "crate_name": response.name,
-            "version": response.version,
-            "docs_url": response.docs_url,
-            "summary": {
-                "description": response.summary.description,
-                "module_count": response.summary.module_count,
-                "struct_count": response.summary.struct_count,
-                "trait_count": response.summary.trait_count,
-                "function_count": response.summary.function_count,
-                "enum_count": response.summary.enum_count,
-                "features": response.summary.features
-            },
-            "categories": {
-                "core_types": response.categories.core_types,
-                "traits": response.categories.traits,
-                "modules": response.categories.modules,
-                "functions": response.categories.functions,
-                "macros": response.categories.macros,
-                "constants": response.categories.constants
-            },
-            "items": response.items.iter().map(|item| {
-                serde_json::json!({
-                    "name": item.name,
-                    "kind": format!("{:?}", item.kind),
-                    "summary": item.summary,
-                    "path": item.path,
-                    "visibility": format!("{:?}", item.visibility),
-                    "is_async": item.is_async,
-                    "signature": item.signature,
-                    "docs_path": item.docs_path
-                })
-            }).collect::<Vec<_>>(),
-            "examples": response.examples.iter().map(|example| {
-                serde_json::json!({
-                    "title": example.title,
-                    "code": example.code,
-                    "language": example.language,
-                    "is_runnable": example.is_runnable
-                })
-            }).collect::<Vec<_>>()
-        })
-    }
 }
 
 #[async_trait::async_trait]
@@ -115,7 +63,7 @@ impl ToolHandler for CrateDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<ServerCache>>,
+        _cache: &Arc<RwLock<ServerCache>>,
     ) -> Result<Value> {
         trace!("Executing crate docs tool with params: {}", params);
 
@@ -128,43 +76,45 @@ impl ToolHandler for CrateDocsTool {
             )
         })?;
 
+        // Validate input
+        input
+            .validate()
+            .map_err(|e| anyhow::anyhow!("Validation error: {}", e))?;
+
         debug!(
             crate_name = %input.crate_name,
             version = ?input.version,
             "Processing crate docs request"
         );
 
-        // Use unified cache strategy
-        CacheStrategy::execute_with_cache(
-            "crate_docs",
-            params,
-            input,
-            CacheConfig::default(),
-            client,
-            cache,
-            |input, client| async move {
-                // Fetch from docs.rs
-                let docs_request = input.to_crate_docs_request();
-                let docs_response = client.get_crate_docs(docs_request).await.crate_context(
-                    "fetch documentation",
-                    &input.crate_name,
-                    input.version.as_deref(),
-                )?;
+        // Create docs service with cache
+        let docs_service = DocsService::new(
+            (**client).clone(),
+            100,                                  // cache capacity
+            std::time::Duration::from_secs(3600), // 1 hour TTL
+        );
 
-                debug!(
-                    crate_name = %docs_response.name,
-                    version = %docs_response.version,
-                    item_count = docs_response.items.len(),
-                    example_count = docs_response.examples.len(),
-                    "Crate documentation fetched successfully"
-                );
+        // Use DocsService directly - it handles caching internally
+        let docs_request = input.to_crate_docs_request();
+        let docs_response = docs_service
+            .get_crate_docs(docs_request)
+            .await
+            .crate_context(
+                "fetch documentation",
+                &input.crate_name,
+                input.version.as_deref(),
+            )?;
 
-                // Transform response to JSON
-                let json_response = Self::response_to_json(docs_response);
-                Ok(json_response)
-            },
-        )
-        .await
+        debug!(
+            crate_name = %docs_response.name,
+            version = %docs_response.version,
+            item_count = docs_response.items.len(),
+            example_count = docs_response.examples.len(),
+            "Crate documentation fetched successfully"
+        );
+
+        // Serialize response to JSON - no manual transformation needed
+        Ok(serde_json::to_value(docs_response)?)
     }
 
     fn description(&self) -> &str {
@@ -386,90 +336,6 @@ mod tests {
         assert!(version_prop["examples"].is_array());
     }
 
-    #[test]
-    fn test_crate_docs_tool_response_to_json() {
-        use rustacean_docs_core::models::docs::{
-            CodeExample, CrateCategories, CrateDocsResponse, CrateItem, CrateSummary, ItemKind,
-            Visibility,
-        };
-        use url::Url;
-
-        let crate_item = CrateItem {
-            name: "spawn".to_string(),
-            kind: ItemKind::Function,
-            summary: Some("Spawn a new task".to_string()),
-            path: "fn.spawn.html".to_string(),
-            visibility: Visibility::Public,
-            is_async: true,
-            signature: Some("pub fn spawn<T>(task: T) -> JoinHandle<T::Output>".to_string()),
-            docs_path: Some("fn.spawn.html".to_string()),
-        };
-
-        let code_example = CodeExample {
-            title: Some("Basic usage".to_string()),
-            code: "tokio::spawn(async { println!(\"Hello\"); });".to_string(),
-            language: "rust".to_string(),
-            is_runnable: true,
-        };
-
-        let docs_response = CrateDocsResponse {
-            name: "tokio".to_string(),
-            version: "1.35.0".to_string(),
-            summary: CrateSummary {
-                description: Some("A runtime for async applications".to_string()),
-                module_count: 5,
-                struct_count: 10,
-                trait_count: 3,
-                function_count: 25,
-                enum_count: 2,
-                features: vec!["full".to_string(), "rt".to_string()],
-            },
-            categories: CrateCategories {
-                core_types: vec!["Runtime".to_string()],
-                traits: vec!["Future".to_string()],
-                modules: vec!["sync".to_string()],
-                functions: vec!["spawn".to_string()],
-                macros: vec!["select!".to_string()],
-                constants: vec![],
-            },
-            items: vec![crate_item],
-            examples: vec![code_example],
-            docs_url: Some(Url::parse("https://docs.rs/tokio/1.35.0").unwrap()),
-        };
-
-        let json = CrateDocsTool::response_to_json(docs_response);
-
-        assert_eq!(json["crate_name"], "tokio");
-        assert_eq!(json["version"], "1.35.0");
-        assert_eq!(json["docs_url"], "https://docs.rs/tokio/1.35.0");
-
-        // Check summary
-        let summary = &json["summary"];
-        assert_eq!(summary["description"], "A runtime for async applications");
-        assert_eq!(summary["module_count"], 5);
-        assert_eq!(summary["struct_count"], 10);
-
-        // Check categories
-        let categories = &json["categories"];
-        assert_eq!(categories["core_types"][0], "Runtime");
-        assert_eq!(categories["traits"][0], "Future");
-
-        // Check items
-        assert!(json["items"].is_array());
-        assert_eq!(json["items"].as_array().unwrap().len(), 1);
-        let item = &json["items"][0];
-        assert_eq!(item["name"], "spawn");
-        assert_eq!(item["kind"], "Function");
-        assert_eq!(item["is_async"], true);
-
-        // Check examples
-        assert!(json["examples"].is_array());
-        assert_eq!(json["examples"].as_array().unwrap().len(), 1);
-        let example = &json["examples"][0];
-        assert_eq!(example["title"], "Basic usage");
-        assert_eq!(example["is_runnable"], true);
-    }
-
     // Mock tests to ensure the structure is correct
     #[tokio::test]
     async fn test_crate_docs_tool_structure() {
@@ -486,35 +352,20 @@ mod tests {
         let _tool_handler: &dyn ToolHandler = &tool;
     }
 
-    // Integration tests would be added here for actual HTTP calls
+    // Integration tests with service-based architecture
     #[cfg(feature = "integration-tests")]
     mod integration_tests {
         use super::*;
-        use rustacean_docs_cache::TieredCache;
         use rustacean_docs_client::DocsClient;
         use serde_json::json;
-        use std::time::Duration;
-
-        async fn create_test_environment() -> (DocsClient, Arc<RwLock<ServerCache>>) {
-            let client = DocsClient::new().unwrap();
-            let cache = Arc::new(RwLock::new(
-                TieredCache::new(
-                    50,                        // memory capacity
-                    Duration::from_secs(3600), // memory TTL
-                    1024 * 1024,               // disk max size (1MB)
-                    Duration::from_secs(7200), // disk TTL
-                    std::env::temp_dir().join("test_cache_crate_docs"),
-                )
-                .await
-                .unwrap(),
-            ));
-            (client, cache)
-        }
 
         #[tokio::test]
         async fn test_crate_docs_tool_invalid_input() {
-            let (client, cache) = create_test_environment().await;
-            let client = Arc::new(client);
+            let client = Arc::new(DocsClient::new().unwrap());
+            let cache = Arc::new(RwLock::new(TieredCache::new(
+                vec![],
+                rustacean_docs_cache::WriteStrategy::WriteThrough,
+            )));
             let tool = CrateDocsTool::new();
 
             // Test empty crate name
@@ -533,20 +384,24 @@ mod tests {
             let result = tool.execute(params, &client, &cache).await;
             assert!(result.is_err(), "Invalid crate name should fail");
 
-            // Test empty version
+            // Test empty version - this should now be handled by parameter validation
             let params = json!({
                 "crate_name": "tokio",
                 "version": ""
             });
 
             let result = tool.execute(params, &client, &cache).await;
+            // This should fail during parameter validation, before reaching the service
             assert!(result.is_err(), "Empty version should fail");
         }
 
         #[tokio::test]
         async fn test_crate_docs_tool_malformed_input() {
-            let (client, cache) = create_test_environment().await;
-            let client = Arc::new(client);
+            let client = Arc::new(DocsClient::new().unwrap());
+            let cache = Arc::new(RwLock::new(TieredCache::new(
+                vec![],
+                rustacean_docs_cache::WriteStrategy::WriteThrough,
+            )));
             let tool = CrateDocsTool::new();
 
             // Test missing required field
@@ -564,37 +419,6 @@ mod tests {
 
             let result = tool.execute(params, &client, &cache).await;
             assert!(result.is_err(), "Wrong crate_name type should fail");
-        }
-
-        #[tokio::test]
-        async fn test_crate_docs_tool_cache_behavior() {
-            let (client, cache) = create_test_environment().await;
-            let _client = Arc::new(client);
-
-            // Test cache key generation
-            let input = CrateDocsToolInput {
-                crate_name: "test-crate".to_string(),
-                version: Some("1.0.0".to_string()),
-            };
-
-            let cache_key = input.cache_key("crate_docs");
-            assert_eq!(cache_key, "crate_docs:test-crate:1.0.0");
-
-            // Test that cache operations work
-            let test_value = json!({"test": "data"});
-            {
-                let cache_guard = cache.write().await;
-                cache_guard
-                    .insert(cache_key.clone(), test_value.clone())
-                    .await;
-            }
-
-            {
-                let cache_guard = cache.read().await;
-                let cached = cache_guard.get(&cache_key).await.unwrap();
-                assert!(cached.is_some());
-                assert_eq!(cached.unwrap(), test_value);
-            }
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::ToolHandler;
 use anyhow::Result;
-use rustacean_docs_cache::{Cache, TieredCache};
-use rustacean_docs_client::DocsClient;
+use rustacean_docs_cache::TieredCache;
+use rustacean_docs_client::{endpoints::docs_modules::service::DocsService, DocsClient};
 use rustacean_docs_core::models::docs::ItemDocsRequest;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ impl ToolHandler for ItemDocsTool {
         &self,
         params: Value,
         client: &Arc<DocsClient>,
-        cache: &Arc<RwLock<TieredCache<String, Value>>>,
+        _cache: &Arc<RwLock<TieredCache<String, Value>>>,
     ) -> Result<Value> {
         trace!(params = ?params, "Executing item docs tool");
 
@@ -49,33 +49,11 @@ impl ToolHandler for ItemDocsTool {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        // Generate cache key
-        let cache_key = format!(
-            "item_docs:{}:{}:{}",
-            crate_name,
-            item_path,
-            version.as_deref().unwrap_or("latest")
-        );
-
-        // Try to get from cache first
-        {
-            let cache_guard = cache.read().await;
-            if let Ok(Some(cached_result)) = cache_guard.get(&cache_key).await {
-                trace!(
-                    crate_name = %crate_name,
-                    item_path = %item_path,
-                    cache_key = %cache_key,
-                    "Item docs cache hit"
-                );
-                return Ok(cached_result);
-            }
-        }
-
-        trace!(
-            crate_name = %crate_name,
-            item_path = %item_path,
-            cache_key = %cache_key,
-            "Item docs cache miss, fetching from API"
+        // Create docs service with cache
+        let docs_service = DocsService::new(
+            (**client).clone(),
+            100,                                  // cache capacity
+            std::time::Duration::from_secs(3600), // 1 hour TTL
         );
 
         // Create request
@@ -92,8 +70,8 @@ impl ToolHandler for ItemDocsTool {
             "Getting item documentation"
         );
 
-        // Execute request
-        let response = client.get_item_docs(request).await?;
+        // Use DocsService directly - it handles caching internally
+        let response = docs_service.get_item_docs(request).await?;
 
         debug!(
             crate_name = %response.crate_name,
@@ -105,41 +83,8 @@ impl ToolHandler for ItemDocsTool {
             "Item documentation retrieved successfully"
         );
 
-        // Convert to JSON response
-        let json_response = json!({
-            "crate_name": response.crate_name,
-            "item_path": response.item_path,
-            "name": response.name,
-            "kind": response.kind,
-            "signature": response.signature,
-            "description": response.description,
-            "examples": response.examples.iter().map(|ex| json!({
-                "title": ex.title,
-                "code": ex.code,
-                "language": ex.language,
-                "is_runnable": ex.is_runnable
-            })).collect::<Vec<_>>(),
-            "docs_url": response.docs_url.map(|url| url.to_string()),
-            "related_items": response.related_items
-        });
-
-        // Store in cache for future requests
-        {
-            let cache_guard = cache.read().await;
-            if let Err(e) = cache_guard
-                .insert(cache_key.clone(), json_response.clone())
-                .await
-            {
-                debug!("Failed to cache item docs result: {}", e);
-            }
-        }
-
-        trace!(
-            cache_key = %cache_key,
-            "Item docs result cached"
-        );
-
-        Ok(json_response)
+        // Serialize response to JSON - no manual transformation needed
+        Ok(serde_json::to_value(response)?)
     }
 
     fn description(&self) -> &str {
@@ -171,7 +116,6 @@ impl ToolHandler for ItemDocsTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
 
     async fn create_test_cache() -> Arc<RwLock<TieredCache<String, Value>>> {
         let temp_dir = std::env::temp_dir().join("item_docs_test_cache");
