@@ -65,7 +65,7 @@ async fn test_cache_hit_scenario() {
     let tool = SearchTool::new();
 
     // Pre-populate cache
-    let cache_key = "search:cached-hit:10";
+    let cache_key = "search_crate:cached-hit:10";
     let mock_response = create_mock_response("cached-hit", 1);
 
     {
@@ -180,10 +180,19 @@ async fn test_cache_key_uniqueness() {
 
     // Create different cache entries that should have unique keys
     let test_cases = vec![
-        ("search:test1:10", json!({"query": "test1", "limit": 10})),
-        ("search:test1:20", json!({"query": "test1", "limit": 20})),
-        ("search:test2:10", json!({"query": "test2", "limit": 10})),
-        ("search:test3:10", json!({"query": "test3"})), // No limit specified, defaults to 10
+        (
+            "search_crate:test1:10",
+            json!({"query": "test1", "limit": 10}),
+        ),
+        (
+            "search_crate:test1:20",
+            json!({"query": "test1", "limit": 20}),
+        ),
+        (
+            "search_crate:test2:10",
+            json!({"query": "test2", "limit": 10}),
+        ),
+        ("search_crate:test3:10", json!({"query": "test3"})), // No limit specified, defaults to 10
     ];
 
     // Pre-populate cache with unique responses for each key
@@ -230,7 +239,7 @@ async fn test_cache_ttl_expiration() {
     let _tool = SearchTool::new();
 
     // Insert entry into cache
-    let cache_key = "search:ttl-test:10";
+    let cache_key = "search_crate:ttl-test:10";
     let mock_response = create_mock_response("ttl-test", 1);
 
     {
@@ -307,8 +316,8 @@ async fn test_cache_lru_eviction() {
 
     // Fill cache to capacity
     let entries = vec![
-        ("search:entry1:10", create_mock_response("entry1", 1)),
-        ("search:entry2:10", create_mock_response("entry2", 1)),
+        ("search_crate:entry1:10", create_mock_response("entry1", 1)),
+        ("search_crate:entry2:10", create_mock_response("entry2", 1)),
     ];
 
     for (key, response) in &entries {
@@ -336,7 +345,7 @@ async fn test_cache_lru_eviction() {
         let cache_guard = small_cache.write().await;
         let new_response = create_mock_response("entry3", 1);
         cache_guard
-            .insert("search:entry3:10".to_string(), new_response)
+            .insert("search_crate:entry3:10".to_string(), new_response)
             .await
             .expect("Failed to insert into cache");
     }
@@ -357,15 +366,15 @@ async fn test_cache_lru_eviction() {
 
         // Test if entries are still accessible (might be promoted from disk)
         let first_entry = cache_guard
-            .get(&"search:entry1:10".to_string())
+            .get(&"search_crate:entry1:10".to_string())
             .await
             .expect("Failed to get from cache");
         let second_entry = cache_guard
-            .get(&"search:entry2:10".to_string())
+            .get(&"search_crate:entry2:10".to_string())
             .await
             .expect("Failed to get from cache");
         let third_entry = cache_guard
-            .get(&"search:entry3:10".to_string())
+            .get(&"search_crate:entry3:10".to_string())
             .await
             .expect("Failed to get from cache");
 
@@ -386,7 +395,7 @@ async fn test_cache_concurrent_access() {
     let _tool = SearchTool::new();
 
     // Pre-populate cache
-    let cache_key = "search:concurrent:10";
+    let cache_key = "search_crate:concurrent:10";
     let mock_response = create_mock_response("concurrent", 1);
 
     {
@@ -587,7 +596,7 @@ async fn test_cache_performance_characteristics() {
 
     // Insert multiple entries
     for i in 0..50 {
-        let key = format!("search:perf{}:10", i);
+        let key = format!("search_crate:perf{}:10", i);
         let response = create_mock_response(&format!("perf{}", i), 1);
 
         {

@@ -137,7 +137,7 @@ async fn test_crate_docs_integration() {
     });
 
     // Pre-populate cache with mock response
-    let cache_key = "crate_docs:integration-test-crate:latest";
+    let cache_key = "get_crate_docs:integration-test-crate:latest";
     let mock_response = create_mock_crate_docs("integration-test-crate", "1.0.0");
 
     {
@@ -166,7 +166,7 @@ async fn test_crate_docs_integration() {
         "version": "1.0.0"
     });
 
-    let versioned_cache_key = "crate_docs:integration-test-crate:1.0.0";
+    let versioned_cache_key = "get_crate_docs:integration-test-crate:1.0.0";
     let versioned_response = create_mock_crate_docs("integration-test-crate", "1.0.0");
 
     {
@@ -212,7 +212,7 @@ async fn test_item_docs_integration() {
     });
 
     // Pre-populate cache
-    let cache_key = "item_docs:test-crate:struct.TestStruct.html:latest";
+    let cache_key = "get_item_docs:test-crate:struct.TestStruct.html:latest";
     let mock_response = create_mock_item_docs("test-crate", "struct.TestStruct.html");
 
     {
@@ -242,7 +242,7 @@ async fn test_item_docs_integration() {
             "item_path": item_path
         });
 
-        let cache_key = format!("item_docs:test-crate:{}:latest", item_path);
+        let cache_key = format!("get_item_docs:test-crate:{}:latest", item_path);
         let response = create_mock_item_docs("test-crate", item_path);
 
         {
@@ -286,7 +286,7 @@ async fn test_version_specific_docs() {
             "version": version
         });
 
-        let cache_key = format!("crate_docs:{}:{}", crate_name, version);
+        let cache_key = format!("get_crate_docs:{}:{}", crate_name, version);
         let mock_response = create_mock_crate_docs(crate_name, version);
 
         {
@@ -317,7 +317,7 @@ async fn test_version_specific_docs() {
             "version": version
         });
 
-        let cache_key = format!("item_docs:{}:{}:{}", crate_name, item_path, version);
+        let cache_key = format!("get_item_docs:{}:{}:{}", crate_name, item_path, version);
         let mock_response = create_mock_item_docs(crate_name, item_path);
 
         {
@@ -363,7 +363,7 @@ async fn test_docs_cache_behavior() {
     });
 
     // First request - cache miss scenario
-    let cache_key = format!("crate_docs:{}:latest", crate_name);
+    let cache_key = format!("get_crate_docs:{}:latest", crate_name);
     let mock_response = create_mock_crate_docs(crate_name, "1.0.0");
 
     {
@@ -411,7 +411,7 @@ async fn test_docs_cache_behavior() {
         "version": "2.0.0"
     });
 
-    let version_cache_key = format!("crate_docs:{}:2.0.0", crate_name);
+    let version_cache_key = format!("get_crate_docs:{}:2.0.0", crate_name);
     let version_response = create_mock_crate_docs(crate_name, "2.0.0");
 
     {
@@ -456,7 +456,7 @@ async fn test_complete_documentation_workflow() {
         "crate_name": crate_name
     });
 
-    let crate_cache_key = format!("crate_docs:{}:latest", crate_name);
+    let crate_cache_key = format!("get_crate_docs:{}:latest", crate_name);
     let crate_response = create_mock_crate_docs(crate_name, "1.0.0");
 
     {
@@ -486,7 +486,7 @@ async fn test_complete_documentation_workflow() {
             "item_path": item_path
         });
 
-        let item_cache_key = format!("item_docs:{}:{}:latest", crate_name, item_path);
+        let item_cache_key = format!("get_item_docs:{}:{}:latest", crate_name, item_path);
         let item_response = create_mock_item_docs(crate_name, item_path);
 
         {
@@ -515,7 +515,7 @@ async fn test_complete_documentation_workflow() {
         "version": "1.0.0"
     });
 
-    let versioned_cache_key = format!("crate_docs:{}:1.0.0", crate_name);
+    let versioned_cache_key = format!("get_crate_docs:{}:1.0.0", crate_name);
     let versioned_response = create_mock_crate_docs(crate_name, "1.0.0");
 
     {
@@ -607,7 +607,7 @@ async fn test_docs_error_handling_integration() {
         "crate_name": "error-recovery-test"
     });
 
-    let cache_key = "crate_docs:error-recovery-test:latest";
+    let cache_key = "get_crate_docs:error-recovery-test:latest";
     let mock_response = create_mock_crate_docs("error-recovery-test", "1.0.0");
 
     {
@@ -635,7 +635,7 @@ async fn test_docs_performance_characteristics() {
     let crate_count = 30;
     for i in 0..crate_count {
         let crate_name = format!("perf-test-crate-{}", i);
-        let cache_key = format!("crate_docs:{}:latest", crate_name);
+        let cache_key = format!("get_crate_docs:{}:latest", crate_name);
         let mock_response = create_mock_crate_docs(&crate_name, "1.0.0");
 
         {

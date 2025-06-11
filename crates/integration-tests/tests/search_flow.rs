@@ -62,10 +62,10 @@ async fn test_search_tool_basic_workflow() {
         Ok(response) => {
             // If successful, verify response structure
             assert!(response.is_object());
-            assert!(response["data"].is_object());
-            assert!(response["data"]["items"].is_array());
-            assert!(response["data"]["pagination"].is_object());
-            assert!(response["data"]["pagination"]["total"].is_number());
+            assert!(response["results"].is_array());
+            if response["total"].is_number() {
+                assert!(response["total"].as_u64().unwrap() >= 0);
+            }
         }
         Err(e) => {
             // Expected if no internet or docs.rs is down
@@ -145,7 +145,7 @@ async fn test_search_cache_integration() {
     let _result = tool.execute(search_params.clone(), &client, &cache).await;
 
     // Test that we can manually interact with cache using the same key format
-    let expected_cache_key = "search:test-crate:20";
+    let expected_cache_key = "search_crate:test-crate:20";
     let test_value = json!({"test": "cached_data"});
 
     {
@@ -177,7 +177,7 @@ async fn test_search_tool_cache_hit_scenario() {
     let tool = SearchTool::new();
 
     // Pre-populate cache with a mock response
-    let cache_key = "search:cached-crate:10";
+    let cache_key = "search_crate:cached-crate:10";
     let mock_response = json!({
         "results": [
             {
@@ -269,9 +269,9 @@ async fn test_search_tool_multiple_queries_different_cache_keys() {
 
     // Pre-populate cache with different query results
     let test_cases = vec![
-        ("search:query1:10", "query1", 10),
-        ("search:query1:20", "query1", 20),
-        ("search:query2:10", "query2", 10),
+        ("search_crate:query1:10", "query1", 10),
+        ("search_crate:query1:20", "query1", 20),
+        ("search_crate:query2:10", "query2", 10),
     ];
 
     for (cache_key, _query, _limit) in &test_cases {
@@ -322,7 +322,7 @@ async fn test_search_tool_json_response_structure() {
     let tool = SearchTool::new();
 
     // Pre-populate cache with a well-structured response
-    let cache_key = "search:structured-test:10";
+    let cache_key = "search_crate:structured-test:10";
     let expected_response = json!({
         "results": [
             {

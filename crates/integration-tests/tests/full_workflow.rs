@@ -105,7 +105,7 @@ async fn test_complete_search_workflow_with_cache() {
     // Phase 2: Pre-populate cache for consistent testing
     println!("Phase 2: Pre-populating cache for consistent testing");
 
-    let cache_key = "search:workflow-test:10";
+    let cache_key = "search_crate:workflow-test:10";
     let mock_response = create_comprehensive_mock_response("workflow-test", 5);
 
     {
@@ -188,7 +188,7 @@ async fn test_multiple_queries_workflow() {
 
     // Pre-populate cache with responses for all queries
     for (query, limit) in &test_queries {
-        let cache_key = format!("search:{}:{}", query, limit);
+        let cache_key = format!("search_crate:{}:{}", query, limit);
         let mock_response = create_comprehensive_mock_response(query, *limit);
 
         {
@@ -259,7 +259,7 @@ async fn test_workflow_with_parameter_variations() {
 
     // Pre-populate cache for all variations
     for limit in &limits {
-        let cache_key = format!("search:{}:{}", base_query, limit);
+        let cache_key = format!("search_crate:{}:{}", base_query, limit);
         let mock_response = create_comprehensive_mock_response(base_query, *limit);
 
         {
@@ -292,7 +292,7 @@ async fn test_workflow_with_parameter_variations() {
     });
 
     // Pre-populate cache for default limit (10)
-    let default_cache_key = "search:default-limit-test:10";
+    let default_cache_key = "search_crate:default-limit-test:10";
     let default_response = create_comprehensive_mock_response("default-limit-test", 10);
 
     {
@@ -348,7 +348,7 @@ async fn test_workflow_error_scenarios() {
     }
 
     // Verify cache still works after errors
-    let cache_key = "search:post-error-test:10";
+    let cache_key = "search_crate:post-error-test:10";
     let mock_response = create_comprehensive_mock_response("post-error-test", 3);
 
     {
@@ -382,7 +382,7 @@ async fn test_workflow_performance_characteristics() {
     // Pre-populate cache with multiple entries
     let query_count = 20;
     for i in 0..query_count {
-        let cache_key = format!("search:perf-test-{}:10", i);
+        let cache_key = format!("search_crate:perf-test-{}:10", i);
         let mock_response = create_comprehensive_mock_response(&format!("perf-test-{}", i), 10);
 
         {
@@ -479,7 +479,7 @@ async fn test_workflow_cache_capacity_management() {
         });
 
         // Pre-populate cache
-        let cache_key = format!("search:capacity-test-{}:10", i);
+        let cache_key = format!("search_crate:capacity-test-{}:10", i);
         let mock_response = create_comprehensive_mock_response(&format!("capacity-test-{}", i), 5);
 
         {
@@ -570,7 +570,7 @@ async fn test_full_system_integration() {
 
     // Phase 2: Pre-populate cache for consistent testing
     for crate_name in &popular_crates {
-        let cache_key = format!("search:{}:15", crate_name);
+        let cache_key = format!("search_crate:{}:15", crate_name);
         let mock_response = create_comprehensive_mock_response(crate_name, 15);
 
         {
@@ -615,7 +615,7 @@ async fn test_full_system_integration() {
         });
 
         // Pre-populate for this variation
-        let cache_key = format!("search:{}:{}", crate_name, limit);
+        let cache_key = format!("search_crate:{}:{}", crate_name, limit);
         let mock_response = create_comprehensive_mock_response(crate_name, limit);
 
         {

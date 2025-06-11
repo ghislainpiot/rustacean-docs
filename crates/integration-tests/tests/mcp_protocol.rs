@@ -205,7 +205,7 @@ async fn test_tool_response_format() {
     let search_tool = SearchTool::new();
 
     // Pre-populate cache with a known response
-    let cache_key = "search:format-test:10";
+    let cache_key = "search_crate:format-test:10";
     let mock_response = json!({
         "results": [
             {
@@ -343,7 +343,7 @@ async fn test_tool_concurrency_safety() {
     let client = Arc::new(client);
 
     // Pre-populate cache to ensure consistent responses
-    let cache_key = "search:concurrency:10";
+    let cache_key = "search_crate:concurrency:10";
     let mock_response = json!({
         "results": [{
             "name": "concurrency-test",
