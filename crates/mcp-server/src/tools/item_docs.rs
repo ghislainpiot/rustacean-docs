@@ -200,9 +200,9 @@ mod tests {
     async fn create_test_cache() -> Arc<RwLock<ServerCache>> {
         let temp_dir = std::env::temp_dir().join("item_docs_test_cache");
         if temp_dir.exists() {
-            std::fs::remove_dir_all(&temp_dir).ok();
+            tokio::fs::remove_dir_all(&temp_dir).await.ok();
         }
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
 
         // Create individual cache layers
         let memory_cache = rustacean_docs_cache::MemoryCache::new(10);

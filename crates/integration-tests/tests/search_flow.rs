@@ -64,7 +64,7 @@ async fn test_search_tool_basic_workflow() {
             assert!(response.is_object());
             assert!(response["results"].is_array());
             if response["total"].is_number() {
-                assert!(response["total"].as_u64().unwrap() >= 0);
+                assert!(response["total"].as_u64().is_some());
             }
         }
         Err(e) => {

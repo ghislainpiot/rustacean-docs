@@ -170,21 +170,21 @@ impl DocsClientConfig {
 
     /// Load configuration from a file
     #[allow(dead_code)]
-    pub fn from_file<P: AsRef<std::path::Path>>(
+    pub async fn from_file<P: AsRef<std::path::Path>>(
         path: P,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let content = std::fs::read_to_string(path)?;
+        let content = tokio::fs::read_to_string(path).await?;
         Ok(Self::from_toml(&content)?)
     }
 
     /// Save configuration to a file
     #[allow(dead_code)]
-    pub fn to_file<P: AsRef<std::path::Path>>(
+    pub async fn to_file<P: AsRef<std::path::Path>>(
         &self,
         path: P,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let content = self.to_toml()?;
-        std::fs::write(path, content)?;
+        tokio::fs::write(path, content).await?;
         Ok(())
     }
 }

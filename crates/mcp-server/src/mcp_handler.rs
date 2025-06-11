@@ -48,7 +48,7 @@ impl RustaceanDocsHandler {
             .join("rustacean-docs");
 
         if !cache_dir.exists() {
-            std::fs::create_dir_all(&cache_dir)?;
+            tokio::fs::create_dir_all(&cache_dir).await?;
         }
 
         let _memory_ttl = std::time::Duration::from_secs(config.cache.memory_ttl_secs);
