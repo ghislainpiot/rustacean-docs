@@ -223,6 +223,7 @@ impl HtmlParser {
     /// Extract code examples from the documentation using configured selectors
     pub fn extract_code_examples(&self) -> Vec<CodeExample> {
         let mut examples = Vec::new();
+        let mut seen_hashes = std::collections::HashSet::new();
 
         let code_selectors: Vec<&str> = self
             .html_config
@@ -233,7 +234,17 @@ impl HtmlParser {
 
         for element in self.extract_by_selectors(&code_selectors) {
             if let Some(code_text) = Self::extract_text_from_element(&element) {
-                if !code_text.trim().is_empty() {
+                let trimmed_code = code_text.trim();
+                if !trimmed_code.is_empty() {
+                    // Create a hash of the code content to detect duplicates
+                    let code_hash = Self::hash_code_content(trimmed_code);
+                    
+                    // Skip if we've already seen this exact code
+                    if seen_hashes.contains(&code_hash) {
+                        continue;
+                    }
+                    seen_hashes.insert(code_hash);
+
                     let title = Some(format!("Example {}", examples.len() + 1));
                     let is_runnable = element
                         .parent()
@@ -243,7 +254,7 @@ impl HtmlParser {
 
                     examples.push(CodeExample {
                         title,
-                        code: code_text.trim().to_string(),
+                        code: trimmed_code.to_string(),
                         language: "rust".to_string(),
                         is_runnable,
                     });
@@ -252,6 +263,22 @@ impl HtmlParser {
         }
 
         examples
+    }
+
+    /// Create a hash of code content for deduplication
+    fn hash_code_content(code: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        // Normalize whitespace for better deduplication
+        let normalized = code.lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        normalized.hash(&mut hasher);
+        hasher.finish()
     }
 
     /// Extract version from text using regex patterns

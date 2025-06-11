@@ -24,7 +24,8 @@
       "mcp__rust-docs__get_crate_metadata",
       "mcp__rust-docs__list_recent_releases",
       "mcp__rust-docs__get_cache_stats",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "mcp__rust-docs__cache_maintenance"
     ],
     "deny": []
   }

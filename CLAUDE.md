@@ -69,6 +69,7 @@ This is a new Rust project focused on documentation (based on the "rustacean-doc
 ## Memory Principles
 
 - Keep references to tasks or Claude Code out of the code and commit messages
+- When fixing a bug, try to make a minimal test reproducing it to avoid future regressions
 
 ## Debugging MCP Tools
 

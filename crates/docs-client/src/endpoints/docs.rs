@@ -441,28 +441,74 @@ fn parse_recent_releases(html: &str, limit: usize) -> Result<Vec<CrateRelease>> 
 /// Parse navigation items to extract crate structure
 fn parse_navigation_items(parser: &HtmlParser) -> Result<Vec<CrateItem>> {
     let api_links = parser.extract_api_links();
+    let summaries = extract_item_summaries_from_page(parser);
     let mut items = Vec::new();
 
     for (text, href) in api_links {
-        let item = create_crate_item_from_link(text, href);
-        trace!(name = %item.name, kind = ?item.kind, path = %item.path, "Extracted API item");
+        let mut item = create_crate_item_from_link(text, href.clone());
+        
+        // Try to find a summary for this item
+        if let Some(summary) = summaries.get(&item.name).or_else(|| summaries.get(&href)) {
+            item.summary = Some(summary.clone());
+        }
+        
+        trace!(name = %item.name, kind = ?item.kind, path = %item.path, summary = ?item.summary, "Extracted API item");
         items.push(item);
     }
 
-    // Remove duplicates
-    items.sort_by(|a, b| a.name.cmp(&b.name));
+    // Remove duplicates based on name and kind
+    items.sort_by(|a, b| a.name.cmp(&b.name).then(a.kind.cmp(&b.kind)));
     items.dedup_by(|a, b| a.name == b.name && a.kind == b.kind);
 
     Ok(items)
 }
 
+/// Extract item summaries from the documentation page
+fn extract_item_summaries_from_page(parser: &HtmlParser) -> std::collections::HashMap<String, String> {
+    use scraper::Selector;
+    let mut summaries = std::collections::HashMap::new();
+    
+    // Look for item table entries where dt contains the link and dd contains the description
+    let item_table_selector = Selector::parse(".item-table").ok();
+    if let Some(selector) = item_table_selector {
+        for table in parser.document().select(&selector) {
+            // Find dt/dd pairs
+            let dt_selector = Selector::parse("dt").unwrap();
+            let dd_selector = Selector::parse("dd").unwrap();
+            
+            let dts: Vec<_> = table.select(&dt_selector).collect();
+            let dds: Vec<_> = table.select(&dd_selector).collect();
+            
+            // Match dt and dd elements
+            for (dt, dd) in dts.iter().zip(dds.iter()) {
+                if let Some(link_element) = dt.select(&Selector::parse("a").unwrap()).next() {
+                    let name = link_element.text().collect::<String>().trim().to_string();
+                    let href = link_element.value().attr("href").unwrap_or("").to_string();
+                    let summary = dd.text().collect::<String>().trim().to_string();
+                    
+                    if !name.is_empty() && !summary.is_empty() {
+                        let clean_name = normalize_item_name(&name);
+                        summaries.insert(clean_name.clone(), summary.clone());
+                        summaries.insert(href, summary);
+                    }
+                }
+            }
+        }
+    }
+    
+    summaries
+}
+
 /// Create a CrateItem from extracted link text and href
 fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
+    // Clean up the item name by removing module paths and normalizing text
+    let clean_name = normalize_item_name(&name);
+    
     // Determine item kind from the link
-    let kind = infer_item_kind(&path, &name);
+    let kind = infer_item_kind(&path, &clean_name);
 
     CrateItem {
-        name,
+        name: clean_name,
         kind,
         summary: None, // Could be enhanced to extract from title attributes
         path: path.clone(),
@@ -471,6 +517,57 @@ fn create_crate_item_from_link(name: String, path: String) -> CrateItem {
         signature: None,
         docs_path: Some(path),
     }
+}
+
+/// Normalize item name by removing module prefixes and cleaning text
+fn normalize_item_name(name: &str) -> String {
+    // Remove leading/trailing whitespace
+    let trimmed = name.trim();
+    
+    // Remove module path prefixes (e.g., "reqwest::Client" -> "Client")
+    let without_module = if let Some(last_part) = trimmed.split("::").last() {
+        last_part
+    } else {
+        trimmed
+    };
+    
+    // Remove any remaining unwanted characters and normalize
+    let normalized = without_module
+        .trim()
+        .replace('\u{200B}', "") // Remove zero-width spaces
+        .replace("_\u{200B}", "_") // Clean up word breaks in rustdoc
+        .replace("\u{200B}_", "_")
+        .replace("wbr", ""); // Remove any leftover wbr tags
+    
+    // If the name contains description-like text, try to extract just the identifier
+    if normalized.contains(' ') && !normalized.starts_with(char::is_uppercase) {
+        // This might be a description, try to extract the first word as the identifier
+        if let Some(first_word) = normalized.split_whitespace().next() {
+            if is_valid_rust_identifier(first_word) {
+                return first_word.to_string();
+            }
+        }
+    }
+    
+    normalized
+}
+
+/// Check if a string looks like a valid Rust identifier
+fn is_valid_rust_identifier(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    
+    // First character must be alphabetic or underscore
+    if !first.is_alphabetic() && first != '_' {
+        return false;
+    }
+    
+    // Remaining characters must be alphanumeric or underscore
+    chars.all(|c| c.is_alphanumeric() || c == '_')
 }
 
 /// Infer item kind from path or name

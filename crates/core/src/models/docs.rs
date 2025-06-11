@@ -103,7 +103,7 @@ pub struct CrateItem {
 }
 
 /// Type of documentation item
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ItemKind {
     Module,
     Struct,
