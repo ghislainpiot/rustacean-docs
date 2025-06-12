@@ -18,8 +18,8 @@ use rustacean_docs_client::DocsClient;
 
 use crate::config::Config;
 use crate::tools::{
-    CacheInfoTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool, ItemDocsTool,
-    RecentReleasesTool, SearchTool, ToolHandler,
+    CacheInfoTool, CacheStatsTool, ClearCacheTool, CrateDocsTool, CrateMetadataTool,
+    CrateOverviewTool, ItemDocsTool, RecentReleasesTool, SearchTool, ToolHandler,
 };
 
 type ServerCache = TieredCache<String, Value>;
@@ -139,6 +139,13 @@ impl RustaceanDocsHandler {
                 annotations: None,
             },
             Tool {
+                name: "get_crate_overview".to_string(),
+                description: Some(CrateOverviewTool::new().description().to_string()),
+                input_schema: serde_json::from_value(CrateOverviewTool::new().parameters_schema())
+                    .unwrap(),
+                annotations: None,
+            },
+            Tool {
                 name: "get_item_docs".to_string(),
                 description: Some(ItemDocsTool::new().description().to_string()),
                 input_schema: serde_json::from_value(ItemDocsTool::new().parameters_schema())
@@ -198,6 +205,10 @@ impl RustaceanDocsHandler {
                 description: CrateDocsTool::new().description().to_string(),
             },
             ToolInfo {
+                name: "get_crate_overview".to_string(),
+                description: CrateOverviewTool::new().description().to_string(),
+            },
+            ToolInfo {
                 name: "get_item_docs".to_string(),
                 description: ItemDocsTool::new().description().to_string(),
             },
@@ -228,6 +239,7 @@ impl RustaceanDocsHandler {
         let schema = match tool_name {
             "search_crate" => SearchTool::new().parameters_schema(),
             "get_crate_docs" => CrateDocsTool::new().parameters_schema(),
+            "get_crate_overview" => CrateOverviewTool::new().parameters_schema(),
             "get_item_docs" => ItemDocsTool::new().parameters_schema(),
             "get_crate_metadata" => CrateMetadataTool::new().parameters_schema(),
             "list_recent_releases" => RecentReleasesTool::new().parameters_schema(),
@@ -248,6 +260,11 @@ impl RustaceanDocsHandler {
             }
             "get_crate_docs" => {
                 CrateDocsTool::new()
+                    .execute(params, &self.client, &self.cache)
+                    .await
+            }
+            "get_crate_overview" => {
+                CrateOverviewTool::new()
                     .execute(params, &self.client, &self.cache)
                     .await
             }

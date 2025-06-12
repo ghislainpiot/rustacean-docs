@@ -161,6 +161,12 @@ impl McpServer {
             Box::new(crate::tools::CrateDocsTool::new()),
         )?;
 
+        // Register the crate overview tool
+        self.register_tool(
+            "get_crate_overview",
+            Box::new(crate::tools::CrateOverviewTool::new()),
+        )?;
+
         // Register the item docs tool
         self.register_tool("get_item_docs", Box::new(crate::tools::ItemDocsTool::new()))?;
 

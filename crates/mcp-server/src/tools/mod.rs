@@ -11,6 +11,7 @@ use rustacean_docs_core::{Error, ErrorBuilder};
 
 pub mod cache_ops;
 pub mod crate_docs;
+pub mod crate_overview;
 pub mod item_docs;
 pub mod metadata;
 pub mod releases;
@@ -19,6 +20,7 @@ pub mod search;
 // Re-export tools for convenience
 pub use cache_ops::{CacheInfoTool, CacheStatsTool, ClearCacheTool};
 pub use crate_docs::CrateDocsTool;
+pub use crate_overview::CrateOverviewTool;
 pub use item_docs::ItemDocsTool;
 pub use metadata::CrateMetadataTool;
 pub use releases::RecentReleasesTool;
