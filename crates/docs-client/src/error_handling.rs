@@ -127,7 +127,7 @@ mod tests {
                 if let rustacean_docs_core::error::DocsError::CrateNotFound { .. } = docs_err {
                     // Expected
                 } else {
-                    panic!("Expected CrateNotFound error, got: {:?}", docs_err);
+                    panic!("Expected CrateNotFound error, got: {docs_err:?}");
                 }
             }
             other => panic!("Expected CrateNotFound error, got: {other:?}"),
@@ -161,7 +161,7 @@ mod tests {
                 if let rustacean_docs_core::error::NetworkError::RateLimit { .. } = network_err {
                     // Expected
                 } else {
-                    panic!("Expected RateLimit error, got: {:?}", network_err);
+                    panic!("Expected RateLimit error, got: {network_err:?}");
                 }
             }
             other => panic!("Expected RateLimit error, got: {other:?}"),

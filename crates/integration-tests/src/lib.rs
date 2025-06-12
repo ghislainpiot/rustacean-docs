@@ -2,6 +2,9 @@
 //!
 //! This crate contains shared utilities and helpers for integration testing.
 
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::useless_vec)]
+
 pub mod common;
 
 // Re-export commonly used types for tests

@@ -25,9 +25,10 @@
 //! # Categories & Emojis
 //! - 📦 Modules - Organizational units containing other items
 //! - 🏗️ Structs - Data structures with named fields
+//! - 🔗 Unions - C-style unions for interoperability
 //! - 🔢 Enums - Algebraic data types with variants
 //! - 🎯 Traits - Interfaces defining shared behavior
-//! - 🔧 Functions - Standalone executable code
+//! - 🔧 Functions - Standalone executable code and methods
 //! - ✨ Macros - Code generation and metaprogramming
 //! - 📌 Constants - Compile-time constant values
 //! - 🏷️ Type Aliases - Alternative names for existing types
@@ -162,6 +163,7 @@ impl CrateOverviewTool {
         let mut macros = Vec::new();
         let mut constants = Vec::new();
         let mut type_aliases = Vec::new();
+        let mut unions = Vec::new();
 
         for item in &docs.items {
             match item.kind {
@@ -170,10 +172,11 @@ impl CrateOverviewTool {
                 ItemKind::Enum => enums.push(item),
                 ItemKind::Trait => traits.push(item),
                 ItemKind::Function => functions.push(item),
+                ItemKind::Method => functions.push(item), // Methods grouped with functions
                 ItemKind::Macro => macros.push(item),
                 ItemKind::Constant => constants.push(item),
                 ItemKind::TypeAlias => type_aliases.push(item),
-                _ => {} // Skip other types for now
+                ItemKind::Union => unions.push(item),
             }
         }
 
@@ -185,6 +188,9 @@ impl CrateOverviewTool {
         }
         if !structs.is_empty() {
             categories.push(("🏗️ Structs", structs));
+        }
+        if !unions.is_empty() {
+            categories.push(("🔗 Unions", unions));
         }
         if !enums.is_empty() {
             categories.push(("🔢 Enums", enums));
@@ -206,8 +212,9 @@ impl CrateOverviewTool {
         }
 
         // Format each category
+        let total_categories = categories.len();
         for (i, (category_name, items)) in categories.iter().enumerate() {
-            let is_last_category = i == categories.len() - 1;
+            let is_last_category = i == total_categories - 1;
             Self::format_category(
                 &mut output,
                 category_name,
@@ -416,7 +423,7 @@ impl ToolHandler for CrateOverviewTool {
         - 'normal': Names, paths, and brief descriptions (default) \
         - 'detailed': Includes visibility indicators, async markers, and signatures \
         \
-        Categories are marked with emojis: 📦 Modules, 🏗️ Structs, 🔢 Enums, 🎯 Traits, 🔧 Functions, ✨ Macros, 📌 Constants, 🏷️ Type Aliases. \
+        Categories are marked with emojis: 📦 Modules, 🏗️ Structs, 🔗 Unions, 🔢 Enums, 🎯 Traits, 🔧 Functions, ✨ Macros, 📌 Constants, 🏷️ Type Aliases. \
         Perfect for quickly understanding crate structure before diving into specific items."
     }
 

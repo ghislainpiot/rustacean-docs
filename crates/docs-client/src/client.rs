@@ -452,7 +452,7 @@ mod tests {
                     {
                         assert_eq!(status, Some(404));
                     } else {
-                        panic!("Expected HttpRequest error, got: {:?}", network_err);
+                        panic!("Expected HttpRequest error, got: {network_err:?}");
                     }
                 }
                 _ => panic!("Expected HttpRequest error, got: {error:?}"),
@@ -486,7 +486,7 @@ mod tests {
                     {
                         assert_eq!(status, Some(500));
                     } else {
-                        panic!("Expected HttpRequest error, got: {:?}", network_err);
+                        panic!("Expected HttpRequest error, got: {network_err:?}");
                     }
                 }
                 _ => panic!("Expected HttpRequest error, got: {error:?}"),
