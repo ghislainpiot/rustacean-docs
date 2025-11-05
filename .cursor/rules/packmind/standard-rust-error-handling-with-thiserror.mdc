@@ -1,0 +1,14 @@
+---
+alwaysApply: true
+---
+## Standard: Rust Error Handling with thiserror
+
+Use thiserror for structured error types with domain-specific enums, transparent wrapping, and clear error messages. :
+* Create a top-level Error enum that aggregates all domain-specific errors using transparent wrapping to provide a unified error type for the entire crate.
+* Define a type alias `pub type Result<T> = std::result::Result<T, Error>` to reduce boilerplate when returning results throughout the crate.
+* Define domain-specific error enums that group related error cases together rather than creating a single catch-all error type.
+* Use `#[error(transparent)]` with `#[from]` when wrapping lower-level errors to preserve the original error chain and enable automatic conversion.
+* Use `thiserror` with `#[derive(Error, Debug)]` for all custom error types to automatically implement the Error trait and provide Debug formatting.
+* Write clear, descriptive error messages using the `#[error("...")]` attribute with format placeholders to include relevant context in the error display.
+
+Full standard is available here for further request: [Rust Error Handling with thiserror](../../../.packmind/standards/rust-error-handling-with-thiserror.md)
